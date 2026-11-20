@@ -203,10 +203,45 @@ def _detect_codex_cli(home: Path) -> Optional[_DetectedCandidate]:
     )
 
 
-def _detect_copilot_gh() -> Optional[_DetectedCandidate]:
+def _parse_gh_status_username(output: str) -> Optional[str]:
+    import re as _re
+
+    match = _re.search(r"Logged in to [^\s]+ account ([^\s(]+)", output or "")
+    if match:
+        return match.group(1).strip()
+    return None
+
+
+def _detect_copilot_gh(*, read_token: bool = True) -> Optional[_DetectedCandidate]:
     gh_bin = shutil.which("gh")
     if not gh_bin:
         return None
+    if not read_token:
+        try:
+            proc = subprocess.run(
+                [gh_bin, "auth", "status"],
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+                check=False,
+            )
+        except Exception:
+            return None
+        if proc.returncode != 0:
+            return None
+        combined = f"{proc.stdout or ''}\n{proc.stderr or ''}"
+        username = _parse_gh_status_username(combined)
+        return _DetectedCandidate(
+            id="copilot:gh",
+            kind="copilot",
+            source="GitHub CLI",
+            method="oauth",
+            label=username or "GitHub CLI",
+            credential={},
+            identity="",
+            account_id_hint=username,
+        )
+
     try:
         proc = subprocess.run(
             [gh_bin, "auth", "token"],
@@ -291,7 +326,7 @@ def _collect_candidates(
     if codex is not None:
         candidates.append(codex)
     if check_gh:
-        copilot = _detect_copilot_gh()
+        copilot = _detect_copilot_gh(read_token=False)
         if copilot is not None:
             candidates.append(copilot)
     candidates.extend(_detect_env_api_keys(env))
@@ -300,6 +335,7 @@ def _collect_candidates(
 
 def _is_already_added(existing_accounts: List[Account], cand: _DetectedCandidate) -> bool:
     email_low = cand.email.strip().lower() if cand.email else None
+    hint_low = cand.account_id_hint.strip().lower() if cand.account_id_hint else None
     for acc in existing_accounts:
         if acc.kind != cand.kind:
             continue
@@ -310,8 +346,11 @@ def _is_already_added(existing_accounts: List[Account], cand: _DetectedCandidate
                 return True
             if acc.identity and email_low in acc.identity.lower():
                 return True
-        if cand.account_id_hint and acc.identity and cand.account_id_hint in acc.identity:
-            return True
+        if cand.account_id_hint:
+            if acc.identity and cand.account_id_hint in acc.identity:
+                return True
+            if hint_low and acc.label and acc.label.strip().lower() == hint_low:
+                return True
     return False
 
 
@@ -369,7 +408,7 @@ def load_local_credential_payload(
     elif candidate_id == "codex:cli":
         cand = _detect_codex_cli(home)
     elif candidate_id == "copilot:gh":
-        cand = _detect_copilot_gh()
+        cand = _detect_copilot_gh(read_token=True)
     else:
         for item in _detect_env_api_keys(env):
             if item.id == candidate_id:

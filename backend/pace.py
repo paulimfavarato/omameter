@@ -256,6 +256,10 @@ def milestone_title_and_body(milestone: str, limits: PriorityLimits) -> Tuple[st
 def send_desktop_notification(title: str, subtitle: str, body: str, *, urgency: str = "normal") -> bool:
     if shutil.which("notify-send") is None:
         return False
+    import html as _html
+
+    summary = f"{title} — {subtitle}".replace("\r", " ").replace("\n", " ")
+    safe_body = _html.escape(str(body or ""), quote=False)
     try:
         proc = subprocess.run(
             [
@@ -264,8 +268,9 @@ def send_desktop_notification(title: str, subtitle: str, body: str, *, urgency: 
                 "Omameter",
                 "-u",
                 urgency,
-                f"{title} — {subtitle}",
-                body,
+                "--",
+                summary,
+                safe_body,
             ],
             capture_output=True,
             timeout=3.0,

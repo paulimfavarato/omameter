@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -86,11 +87,27 @@ class CredentialVault:
 
     def _save_fallback(self, data: Dict[str, Dict[str, Any]]) -> None:
         self.fallback_path.parent.mkdir(parents=True, exist_ok=True)
-        os.chmod(self.fallback_path.parent, 0o700)
-        tmp = self.fallback_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
-        os.chmod(tmp, 0o600)
-        tmp.replace(self.fallback_path)
+        try:
+            os.chmod(self.fallback_path.parent, 0o700)
+        except OSError:
+            pass
+        fd, tmp_name = tempfile.mkstemp(
+            dir=str(self.fallback_path.parent),
+            prefix=f".{self.fallback_path.name}.",
+            suffix=".tmp",
+        )
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(data, indent=2, sort_keys=True))
+            os.chmod(tmp_path, 0o600)
+            tmp_path.replace(self.fallback_path)
+        except BaseException:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
 
     def get_account_credential(self, account_id: str) -> Optional[Dict[str, Any]]:
         raw = self._secret_tool_lookup(self.SERVICE_ACCOUNTS, account_id)

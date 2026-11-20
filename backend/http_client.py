@@ -8,6 +8,7 @@ import os
 import re
 import ssl
 import subprocess
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -22,25 +23,107 @@ MAX_RESPONSE_BYTES = 4 * 1024 * 1024  # 4 MiB hard cap
 DEFAULT_TIMEOUT_SEC = 25.0
 OMAMETER_CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")) / "omameter" / "proxy.json"
 
+_SENSITIVE_REDIRECT_HEADERS = frozenset({"authorization", "cookie", "proxy-authorization", "x-api-key"})
 
-_SECRET_PATTERNS = [
-    re.compile(r"(Bearer\s+)[A-Za-z0-9._\-+/=]+", re.IGNORECASE),
-    re.compile(r"(sk-[A-Za-z0-9\-_]{10,})"),
-    re.compile(r"(gh[pousr]_[A-Za-z0-9]{10,})"),
-    re.compile(r"(eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{5,})"),
-    re.compile(r"([a-zA-Z][a-zA-Z0-9+.\-]*://[^:@/\s]+:)([^@/\s]+)(@)"),
-]
+# (pattern, replacement) applied in order by redact_secrets()
+_SECRET_RULES = (
+    (re.compile(r"(Authorization\s*:\s*(?:Bearer|Token|Basic)\s+)[^\s'\",;]+", re.IGNORECASE), r"\1[REDACTED]"),
+    (re.compile(r"(devin-session-token\$)[^\s'\",;]+"), r"\1[REDACTED]"),
+    (re.compile(r"(Bearer\s+)[A-Za-z0-9._\-+/=$]+", re.IGNORECASE), r"\1[REDACTED]"),
+    (re.compile(r"(WorkosCursorSessionToken=)[^;\s'\"]+"), r"\1[REDACTED]"),
+    (
+        re.compile(
+            r"([?&](?:verifier|code_verifier|access_token|refresh_token|api_key|token|client_secret|management_key)=)[^&\s'\"]+",
+            re.IGNORECASE,
+        ),
+        r"\1[REDACTED]",
+    ),
+    (re.compile(r"sk-[A-Za-z0-9\-_]{10,}"), "[REDACTED]"),
+    (re.compile(r"github_pat_[A-Za-z0-9_]{20,}"), "[REDACTED]"),
+    (re.compile(r"gh[pousr]_[A-Za-z0-9]{10,}"), "[REDACTED]"),
+    (re.compile(r"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{5,}"), "[REDACTED]"),
+    (re.compile(r"([a-zA-Z][a-zA-Z0-9+.\-]*://[^:@/\s]+:)([^@/\s]+)(@)"), r"\1[REDACTED]\3"),
+)
 
 
 def redact_secrets(text: str) -> str:
     if not text:
         return ""
     out = str(text)
-    out = _SECRET_PATTERNS[0].sub(r"\1[REDACTED]", out)
-    for pat in _SECRET_PATTERNS[1:4]:
-        out = pat.sub("[REDACTED]", out)
-    out = _SECRET_PATTERNS[4].sub(r"\1[REDACTED]\3", out)
+    for pat, repl in _SECRET_RULES:
+        out = pat.sub(repl, out)
     return out
+
+
+def _origin_key(url: str) -> Tuple[str, str, int]:
+    parts = urllib.parse.urlsplit(url)
+    scheme = (parts.scheme or "").lower()
+    host = (parts.hostname or "").lower()
+    default_port = 443 if scheme == "https" else 80
+    try:
+        port = parts.port or default_port
+    except ValueError:
+        port = default_port
+    return scheme, host, port
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follow HTTP(S) redirects without leaking credentials cross-origin or downgrading TLS."""
+
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> Any:
+        old_parts = urllib.parse.urlsplit(req.full_url)
+        new_parts = urllib.parse.urlsplit(newurl)
+        old_scheme = (old_parts.scheme or "").lower()
+        new_scheme = (new_parts.scheme or "").lower()
+
+        if new_scheme not in ("http", "https"):
+            raise urllib.error.HTTPError(
+                newurl, code, f"{msg} - Redirection to non-HTTP(S) scheme is not allowed", headers, fp
+            )
+        if old_scheme == "https" and new_scheme != "https":
+            raise urllib.error.HTTPError(
+                newurl, code, f"{msg} - HTTPS to HTTP redirect downgrade is not allowed", headers, fp
+            )
+
+        new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new_req is None:
+            return None
+
+        if _origin_key(req.full_url) != _origin_key(newurl):
+            for hdr_map in (new_req.headers, new_req.unredirected_hdrs):
+                for key in list(hdr_map.keys()):
+                    if key.lower() in _SENSITIVE_REDIRECT_HEADERS:
+                        del hdr_map[key]
+        return new_req
+
+
+def _curl_quote(value: str) -> str:
+    text = str(value)
+    if "\r" in text or "\n" in text or "\x00" in text:
+        raise HTTPTransportError(tr("net.httpError", "HTTP error: %1", "invalid control character in request"))
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _write_private_json(path: Path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(path.parent, 0o700)
+    except OSError:
+        pass
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, indent=2) + "\n")
+        os.chmod(tmp_path, 0o600)
+        tmp_path.replace(path)
+    except BaseException:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 @dataclass(frozen=True)
@@ -107,11 +190,7 @@ class ProxyConfig:
             except Exception:
                 existing = {}
         existing["proxy"] = {"enabled": bool(enabled), "url": clean_url}
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
-        os.chmod(tmp, 0o600)
-        tmp.replace(path)
+        _write_private_json(path, existing)
         return True, None
 
 
@@ -169,6 +248,10 @@ class HTTPClient:
         timeout: Optional[float] = None,
         use_curl: bool = False,
     ) -> HTTPResponse:
+        parsed_scheme = (urllib.parse.urlsplit(url).scheme or "").lower()
+        if parsed_scheme not in ("http", "https"):
+            raise HTTPTransportError(tr("net.httpError", "HTTP error: %1", f"unsupported URL scheme: {parsed_scheme}"))
+
         req_headers = dict(headers or {})
         if not any(k.lower() == "user-agent" for k in req_headers):
             req_headers["User-Agent"] = "Omameter/1.0"
@@ -192,6 +275,20 @@ class HTTPClient:
     def post(self, url: str, **kwargs: Any) -> HTTPResponse:
         return self.request("POST", url, **kwargs)
 
+    def _build_urllib_opener(self) -> urllib.request.OpenerDirector:
+        opener = urllib.request.OpenerDirector()
+        if self.proxy.enabled and self.proxy.url:
+            opener.add_handler(urllib.request.ProxyHandler({"http": self.proxy.url, "https": self.proxy.url}))
+        else:
+            opener.add_handler(urllib.request.ProxyHandler())
+        opener.add_handler(urllib.request.HTTPHandler())
+        opener.add_handler(urllib.request.HTTPSHandler(context=self._ssl_ctx))
+        opener.add_handler(_SafeRedirectHandler())
+        opener.add_handler(urllib.request.HTTPDefaultErrorHandler())
+        opener.add_handler(urllib.request.HTTPErrorProcessor())
+        opener.add_handler(urllib.request.UnknownHandler())
+        return opener
+
     def _request_urllib(
         self,
         method: str,
@@ -200,10 +297,7 @@ class HTTPClient:
         body: Optional[bytes],
         timeout: float,
     ) -> HTTPResponse:
-        handlers: list[Any] = [urllib.request.HTTPSHandler(context=self._ssl_ctx)]
-        if self.proxy.enabled and self.proxy.url:
-            handlers.append(urllib.request.ProxyHandler({"http": self.proxy.url, "https": self.proxy.url}))
-        opener = urllib.request.build_opener(*handlers)
+        opener = self._build_urllib_opener()
         req = urllib.request.Request(url, data=body, headers=headers, method=method.upper())
         try:
             with opener.open(req, timeout=timeout) as resp:
@@ -233,6 +327,13 @@ class HTTPClient:
         body: Optional[bytes],
         timeout: float,
     ) -> HTTPResponse:
+        config_lines = [f"url = {_curl_quote(url)}"]
+        if self.proxy.enabled and self.proxy.url:
+            config_lines.append(f"proxy = {_curl_quote(self.proxy.url)}")
+        for k, v in headers.items():
+            config_lines.append(f"header = {_curl_quote(f'{k}: {v}')}")
+        config_bytes = ("\n".join(config_lines) + "\n").encode("utf-8")
+
         cmd = [
             "curl",
             "-sS",
@@ -246,25 +347,52 @@ class HTTPClient:
             "-",
             "--no-progress-meter",
         ]
-        if self.proxy.enabled and self.proxy.url:
-            cmd.extend(["--proxy", self.proxy.url])
-        for k, v in headers.items():
-            cmd.extend(["-H", f"{k}: {v}"])
         if body is not None:
             cmd.extend(["--data-binary", "@-"])
-        cmd.append(url)
+
+        pipe_r: Optional[int] = None
+        tmp_cfg: Optional[Path] = None
+        pass_fds: Tuple[int, ...] = ()
         try:
+            if len(config_bytes) <= 32768 and os.path.exists("/dev/fd"):
+                pipe_r, pipe_w = os.pipe()
+                try:
+                    os.write(pipe_w, config_bytes)
+                finally:
+                    os.close(pipe_w)
+                pass_fds = (pipe_r,)
+                cmd.extend(["-K", f"/dev/fd/{pipe_r}"])
+            else:
+                fd, tmp_name = tempfile.mkstemp(prefix=".omameter-curl-", suffix=".cfg")
+                tmp_cfg = Path(tmp_name)
+                with os.fdopen(fd, "wb") as fh:
+                    fh.write(config_bytes)
+                os.chmod(tmp_cfg, 0o600)
+                cmd.extend(["-K", str(tmp_cfg)])
+
             proc = subprocess.run(
                 cmd,
                 input=body,
                 capture_output=True,
                 timeout=timeout + 5.0,
                 check=False,
+                pass_fds=pass_fds,
             )
         except subprocess.TimeoutExpired as err:
             raise HTTPTransportError(tr("net.timedOut", "Request timed out after %1s", int(timeout)), timeout=True) from err
         except OSError as err:
             raise HTTPTransportError(tr("net.curlUnavailable", "curl unavailable: %1", err), offline=True) from err
+        finally:
+            if pipe_r is not None:
+                try:
+                    os.close(pipe_r)
+                except OSError:
+                    pass
+            if tmp_cfg is not None:
+                try:
+                    tmp_cfg.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
         if proc.returncode != 0:
             err_msg = proc.stderr.decode("utf-8", errors="replace").strip() or tr("net.curlExited", "curl exited %1", proc.returncode)

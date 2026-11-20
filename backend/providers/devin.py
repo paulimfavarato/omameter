@@ -174,7 +174,9 @@ def _resolve_api_server_url(credential: Dict[str, Any]) -> str:
         candidate = credential.get(API_SERVER_URL_KEY)
     if isinstance(candidate, str) and candidate.strip():
         parsed = urllib.parse.urlsplit(candidate.strip())
-        if parsed.scheme in {"http", "https"} and parsed.netloc:
+        scheme = (parsed.scheme or "").lower()
+        host = (parsed.hostname or "").lower()
+        if parsed.netloc and (scheme == "https" or (scheme == "http" and host in {"localhost", "127.0.0.1", "::1"})):
             return candidate.strip().rstrip("/")
     return DEFAULT_API_SERVER_URL
 

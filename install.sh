@@ -43,10 +43,7 @@ chmod +x "$TARGET_DIR/bin/omameter" "$TARGET_DIR/backend/daemon.py" "$TARGET_DIR
 
 echo "==> Installing CLI helper to ${CLI_TARGET}..."
 mkdir -p "$CLI_BIN_DIR"
-cat > "$CLI_TARGET" <<EOF
-#!/usr/bin/env bash
-exec python3 "${TARGET_DIR}/bin/omameter" "\$@"
-EOF
+printf '#!/usr/bin/env bash\nexec python3 %q "$@"\n' "${TARGET_DIR}/bin/omameter" > "$CLI_TARGET"
 chmod +x "$CLI_TARGET"
 
 if command -v omarchy >/dev/null 2>&1; then

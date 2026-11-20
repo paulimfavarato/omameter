@@ -111,6 +111,8 @@ class AccountLifecycle:
         if target_id:
             target = self.store.get_account(target_id)
             if target is not None:
+                if target.kind != kind or target.is_hub_account:
+                    return Admission("missing")
                 self.vault.set_account_credential(target.id, credential)
                 fields: Dict[str, Any] = {}
                 if domain:

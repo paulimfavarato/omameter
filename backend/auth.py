@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import base64
+import errno
 import hashlib
+import hmac
 import html
 import queue
 import re
@@ -291,7 +293,7 @@ def parse_pasted_authorization_code(value: str, expected_state: str) -> str:
 
     if not code:
         raise LoginError(tr("auth.invalidCode", "The authorization code was invalid."), code="invalid_code")
-    if state != expected_state:
+    if not isinstance(state, str) or not hmac.compare_digest(state, expected_state):
         raise LoginError(tr("auth.stateMismatch", "The sign-in response did not match this request."), code="invalid_state")
     return code
 
@@ -444,6 +446,8 @@ class LoopbackCallbackServer:
                 self.send_response(status)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(raw)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Referrer-Policy", "no-referrer")
                 self.send_header("Connection", "close")
                 self.end_headers()
                 try:
@@ -458,7 +462,7 @@ class LoopbackCallbackServer:
                     return
                 params = urllib.parse.parse_qs(parsed.query, keep_blank_values=False)
                 cb_state = (params.get("state") or [None])[0]
-                if cb_state != owner.state:
+                if not isinstance(cb_state, str) or not hmac.compare_digest(cb_state, owner.state):
                     self._send_html(400, _error_html(tr("auth.page.stateMismatch", "Sign-in state did not match.")))
                     return
                 cb_error = (params.get("error") or [None])[0]
@@ -480,21 +484,52 @@ class LoopbackCallbackServer:
             def do_HEAD(self) -> None:  # noqa: N802
                 self._send_html(405, _error_html(tr("auth.page.getOnly", "Only GET is supported.")))
 
-        try:
-            self._server = _ThreadingHTTPServer(("127.0.0.1", int(port)), _CallbackHandler)
-        except OSError as exc:
-            raise LoginError(tr("auth.listenerFailed", "Could not start the sign-in callback: %1", exc), code="listener_failed") from exc
-
-        actual_port = int(self._server.server_address[1])
-        self.port = actual_port
-        self.redirect_uri = f"http://{self.redirect_host}:{actual_port}{self.path}"
-
+        ipv6_unsupported = {
+            errno.EAFNOSUPPORT,
+            errno.EADDRNOTAVAIL,
+            errno.EPROTONOSUPPORT,
+        }
+        requested_port = int(port)
+        max_attempts = 3 if requested_port == 0 else 1
+        self._server: _ThreadingHTTPServer
         self._server6: Optional[_ThreadingHTTPServer6] = None
-        if self.redirect_host == "localhost" and socket.has_ipv6:
+        last_exc: Optional[OSError] = None
+
+        for attempt in range(max_attempts):
             try:
-                self._server6 = _ThreadingHTTPServer6(("::1", actual_port), _CallbackHandler)
-            except OSError:
-                self._server6 = None
+                server4 = _ThreadingHTTPServer(("127.0.0.1", requested_port), _CallbackHandler)
+            except OSError as exc:
+                raise LoginError(tr("auth.listenerFailed", "Could not start the sign-in callback: %1", exc), code="listener_failed") from exc
+
+            actual_port = int(server4.server_address[1])
+            server6: Optional[_ThreadingHTTPServer6] = None
+            if self.redirect_host == "localhost" and socket.has_ipv6:
+                try:
+                    server6 = _ThreadingHTTPServer6(("::1", actual_port), _CallbackHandler)
+                except OSError as exc:
+                    if exc.errno in ipv6_unsupported:
+                        server6 = None
+                    elif exc.errno == errno.EADDRINUSE and requested_port == 0 and attempt + 1 < max_attempts:
+                        server4.server_close()
+                        last_exc = exc
+                        continue
+                    else:
+                        server4.server_close()
+                        raise LoginError(
+                            tr("auth.listenerFailed", "Could not start the sign-in callback: %1", exc),
+                            code="listener_failed",
+                        ) from exc
+
+            self._server = server4
+            self._server6 = server6
+            self.port = actual_port
+            self.redirect_uri = f"http://{self.redirect_host}:{actual_port}{self.path}"
+            break
+        else:
+            raise LoginError(
+                tr("auth.listenerFailed", "Could not start the sign-in callback: %1", last_exc or "EADDRINUSE"),
+                code="listener_failed",
+            )
 
         self._thread = threading.Thread(
             target=self._server.serve_forever,

@@ -193,20 +193,37 @@ class TestLocalCredentialDetection(unittest.TestCase):
 
     def test_copilot_gh_detection_mocked(self) -> None:
         gh_secret = "gho_SUPERSECRETGITHUBTOKEN123456"
-        fake_proc = mock.Mock(returncode=0, stdout=gh_secret + "\n")
+        calls: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **_kwargs: object) -> mock.Mock:
+            calls.append(list(cmd))
+            if cmd[1:] == ["auth", "status"]:
+                return mock.Mock(
+                    returncode=0,
+                    stdout="github.com\n  ✓ Logged in to github.com account octocat (keyring)\n",
+                    stderr="",
+                )
+            if cmd[1:] == ["auth", "token"]:
+                return mock.Mock(returncode=0, stdout=gh_secret + "\n", stderr="")
+            return mock.Mock(returncode=1, stdout="", stderr="unexpected")
+
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch("backend.local_detect.shutil.which", return_value="/usr/bin/gh"), \
-                 mock.patch("backend.local_detect.subprocess.run", return_value=fake_proc):
+                 mock.patch("backend.local_detect.subprocess.run", side_effect=fake_run):
                 items = scan_local_credentials([], home_dir=Path(tmp), environ={}, check_gh=True)
                 self.assertEqual(len(items), 1)
                 self.assertEqual(items[0]["id"], "copilot:gh")
                 self.assertEqual(items[0]["kind"], "copilot")
+                self.assertEqual(items[0]["label"], "octocat")
                 self.assertNotIn(gh_secret, json.dumps(items))
+                # Scanning must never read the raw GitHub token.
+                self.assertEqual(calls, [["/usr/bin/gh", "auth", "status"]])
 
                 kind, method, label, cred, ident = load_local_credential_payload("copilot:gh", home_dir=Path(tmp), environ={})
                 self.assertEqual((kind, method, label), ("copilot", "oauth", "GitHub CLI"))
                 self.assertEqual(cred["accessToken"], gh_secret)
                 self.assertEqual(ident, api_key_identity(gh_secret))
+                self.assertEqual(calls[-1], ["/usr/bin/gh", "auth", "token"])
 
 
 class TestResetExpiryNotifications(unittest.TestCase):

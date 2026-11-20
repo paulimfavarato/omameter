@@ -164,16 +164,18 @@ class OmameterDaemon:
             hub = self.store.get_hub(account.hub_id)
             key_info = self.vault.get_hub_key(account.hub_id)
             if hub and key_info and key_info.get("managementKey"):
-                return HubTunnelHTTPClient(
-                    hub_id=hub.id,
-                    base_url=hub.base_url,
-                    management_key=key_info["managementKey"],
-                    auth_index=account.hub_auth_index or "",
-                    upstream_name=account.display_name,
-                    base_http=base_client,
-                    gate=self._hub_gate,
-                    on_login_missing=lambda _hid: self._pool.submit(self._sync_all_hubs, True),
-                )
+                saved_url = (key_info.get("baseUrl") or "").rstrip("/")
+                if saved_url and saved_url == hub.base_url.rstrip("/"):
+                    return HubTunnelHTTPClient(
+                        hub_id=hub.id,
+                        base_url=hub.base_url,
+                        management_key=key_info["managementKey"],
+                        auth_index=account.hub_auth_index or "",
+                        upstream_name=account.display_name,
+                        base_http=base_client,
+                        gate=self._hub_gate,
+                        on_login_missing=lambda _hid: self._pool.submit(self._sync_all_hubs, True),
+                    )
         return base_client
 
     # -----------------------------------------------------------------------
@@ -777,6 +779,8 @@ class OmameterDaemon:
             )
             if admission.outcome == "rejected":
                 return self._fail(tr("command.apiKeyDuplicate", "This API key is already added."))
+            if admission.account is None:
+                return self._fail(tr("command.accountNotFound", "Account not found."))
             if admission.outcome == "updated":
                 self.emit_toast(tr("toast.keyUpdated", "Updated key for %1.", admission.account.full_name))
             else:

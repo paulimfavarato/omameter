@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,13 +19,26 @@ CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) /
 
 def _atomic_write_json(path: Path, data: Any, mode: int = 0o600) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     try:
-        os.chmod(tmp, mode)
+        os.chmod(path.parent, 0o700)
     except OSError:
         pass
-    tmp.replace(path)
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
+        try:
+            os.chmod(tmp_path, mode)
+        except OSError:
+            pass
+        tmp_path.replace(path)
+    except BaseException:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 def _read_json(path: Path, default: Any) -> Any:
@@ -112,7 +126,7 @@ class OmameterStore:
         _atomic_write_json(
             self.snapshots_path,
             {acc_id: snap.to_dict() for acc_id, snap in self.snapshots.items()},
-            mode=0o644,
+            mode=0o600,
         )
 
     # -----------------------------------------------------------------------

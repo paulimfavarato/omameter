@@ -358,13 +358,16 @@ class Account:
         return bool(self.hub_id)
 
     def links(self) -> List[Dict[str, str]]:
+        import urllib.parse
+
         result = [lnk.to_dict() for lnk in self.spec.links]
         if self.kind == "copilot" and self.organization:
             host = self.domain or "github.com"
+            org_slug = urllib.parse.quote(self.organization, safe="")
             result.append({
                 "id": "orgBilling",
                 "title": "Organization Billing",
-                "url": f"https://{host}/organizations/{self.organization}/settings/billing",
+                "url": f"https://{host}/organizations/{org_slug}/settings/billing",
             })
         return result
 
