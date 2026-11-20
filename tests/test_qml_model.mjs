@@ -398,3 +398,75 @@ test("metricPickerLabel trusts the daemon's titleNamesWindow flag over word chec
   assert.equal(Model.metricPickerLabel({ shortTitle: "Semanal", windowTag: "7d", titleNamesWindow: true }), "Semanal");
   assert.equal(Model.metricPickerLabel({ shortTitle: "Gemini", windowTag: "7d", titleNamesWindow: false }), "Gemini 7d");
 });
+
+test("formatBarMeter renders sub-block and braille progress meters and ignores non-text styles", () => {
+  assert.equal(Model.formatBarMeter(0.5, "none"), "");
+  assert.equal(Model.formatBarMeter(0.5, "bar"), "");
+  assert.equal(Model.formatBarMeter(0, "blocks", 6), "[░░░░░░]");
+  assert.equal(Model.formatBarMeter(1, "blocks", 6), "[██████]");
+  assert.equal(Model.formatBarMeter(0.5, "blocks", 6), "[███░░░]");
+  assert.equal(Model.formatBarMeter(0.25, "blocks", 6), "[█▌░░░░]");
+  assert.equal(Model.formatBarMeter(0, "braille", 5), "[⣀⣀⣀⣀⣀]");
+  assert.equal(Model.formatBarMeter(1, "braille", 5), "[⣿⣿⣿⣿⣿]");
+  assert.equal(Model.formatBarMeter(0.5, "braille", 6), "[⣿⣿⣿⣀⣀⣀]");
+  assert.equal(Model.formatBarMeter(0.25, "braille", 6), "[⣿⣦⣀⣀⣀⣀]");
+  // Clamping out-of-range and NaN
+  assert.equal(Model.formatBarMeter(-0.3, "blocks", 4), "[░░░░]");
+  assert.equal(Model.formatBarMeter(1.8, "blocks", 4), "[████]");
+  assert.equal(Model.formatBarMeter(NaN, "braille", 4), "[⣀⣀⣀⣀]");
+});
+
+test("providerColor covers every catalog provider for dark/light bars and alerts always override", () => {
+  const darkPal = Model.pickThemePalette({ background: "#111417", orange: "#f5a623", red: "#ff4444" }, "#e5e5e5", "#111417", "#38bdf8", "#ff4444");
+  const lightPal = Model.pickThemePalette({ background: "#f5f5f5", orange: "#c96a00", red: "#c62828" }, "#1c1c1c", "#f5f5f5", "#2563eb", "#c62828");
+
+  for (const prov of Model.safeProviderCatalog(null)) {
+    const dk = Model.providerColor(prov.id, darkPal, "#eeeeee");
+    const lt = Model.providerColor(prov.id, lightPal, "#111111");
+    assert.match(dk, /^#[0-9a-fA-F]{6}$/);
+    assert.match(lt, /^#[0-9a-fA-F]{6}$/);
+    assert.notEqual(dk, lt, `dark and light brand color should differ for ${prov.id}`);
+  }
+  assert.equal(Model.providerColor("unknown_provider", darkPal, "#abcdef"), "#abcdef");
+
+  // Normal severity uses provider color only when enabled
+  assert.equal(
+    Model.barItemColor({ kind: "claude", severity: "normal" }, { palette: darkPal, foreground: "#e5e5e5", urgent: "#ff4444", useProviderColors: false }),
+    "#e5e5e5"
+  );
+  assert.equal(
+    Model.barItemColor({ kind: "claude", severity: "normal" }, { palette: darkPal, foreground: "#e5e5e5", urgent: "#ff4444", useProviderColors: true }),
+    Model.providerColor("claude", darkPal, "#e5e5e5")
+  );
+  // Warning and critical ALWAYS override provider colors
+  assert.equal(
+    Model.barItemColor({ kind: "claude", severity: "warning" }, { palette: darkPal, foreground: "#e5e5e5", urgent: "#ff4444", useProviderColors: true }),
+    darkPal.warning
+  );
+  assert.equal(
+    Model.barItemColor({ kind: "claude", severity: "critical" }, { palette: darkPal, foreground: "#e5e5e5", urgent: "#ff4444", useProviderColors: true }),
+    darkPal.critical
+  );
+});
+
+test("groupBarColumns stacks pairs in stacked layout and keeps lone trailing items full-height", () => {
+  const plain = (v) => JSON.parse(JSON.stringify(v));
+  const items = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }];
+  assert.deepEqual(
+    plain(Model.groupBarColumns(items.slice(0, 3), "single")),
+    [[{ id: 1 }], [{ id: 2 }], [{ id: 3 }]]
+  );
+  assert.deepEqual(
+    plain(Model.groupBarColumns(items.slice(0, 1), "stacked")),
+    [[{ id: 1 }]]
+  );
+  assert.deepEqual(
+    plain(Model.groupBarColumns(items.slice(0, 4), "stacked")),
+    [[{ id: 1 }, { id: 2 }], [{ id: 3 }, { id: 4 }]]
+  );
+  assert.deepEqual(
+    plain(Model.groupBarColumns(items, "stacked")),
+    [[{ id: 1 }, { id: 2 }], [{ id: 3 }, { id: 4 }], [{ id: 5 }]]
+  );
+  assert.deepEqual(plain(Model.groupBarColumns([], "stacked")), []);
+});

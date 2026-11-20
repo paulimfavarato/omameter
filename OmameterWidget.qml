@@ -62,6 +62,10 @@ Panel {
   readonly property bool showIconOnly: vertical || !service || !service.ready || !!barData.iconOnly || barItems.length === 0
   readonly property bool privacyMode: daemonSettings.privacyMode
   readonly property string barLabelStyle: String(daemonSettings.barLabelStyle || "full")
+  readonly property string barMeterStyle: String(daemonSettings.barMeterStyle || "none")
+  readonly property string barLayout: String(daemonSettings.barLayout || "single")
+  readonly property bool barProviderColors: !!daemonSettings.barProviderColors
+  readonly property var barColumns: Model.groupBarColumns(root.barItems, root.barLayout)
   // Options for Model.describeLine, shared by the chip strip, the bar tooltip and Copy Summary.
   readonly property var lineOpts: ({
     resetDisplayMode: daemonSettings.resetDisplayMode,
@@ -348,65 +352,46 @@ Panel {
       fontFamily: barButton.fontFamily
     }
 
-    // Horizontal chips strip: [BrandMark (+ badge)] [glyph|label] [trayValue] ... +N
+    // Horizontal chips strip: single-row or 2-row stacked columns of TopBarChip ... +N
     Row {
       id: chipStrip
       visible: !root.showIconOnly
       anchors.centerIn: parent
-      spacing: root.barLabelStyle === "full" ? Style.space(9) : Style.space(8)
+      readonly property real stackedRowHeight: Math.max(
+        10,
+        Math.floor(((barButton.barSize > 0 ? barButton.barSize : Style.bar.sizeHorizontal) - 2) / 2)
+      )
+      spacing: root.barLayout === "stacked"
+        ? Style.space(8)
+        : (root.barLabelStyle === "full" ? Style.space(9) : Style.space(8))
 
       Repeater {
-        model: root.barItems
+        model: root.barColumns
 
-        delegate: Row {
+        delegate: Column {
+          id: barCol
           required property var modelData
-          readonly property var desc: Model.describeLine(modelData, {
-            palette: root.palette,
-            foreground: barButton.foreground,
-            urgent: barButton.activeColor
-          })
-          readonly property var chipDisplay: Model.barChipDisplay(modelData, root.barLabelStyle)
-          readonly property color chipColor: desc.color
+          readonly property bool isStacked: !!(modelData && modelData.length > 1)
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: isStacked ? 1 : 0
 
-          spacing: root.barLabelStyle === "full" ? Style.space(4) : Style.space(3)
+          Repeater {
+            model: barCol.modelData
 
-          UI.BrandMark {
-            anchors.verticalCenter: parent.verticalCenter
-            icon: modelData.icon || "omameter.svg"
-            iconSize: Style.bar.iconSize
-            tintColor: chipColor
-            badgeBackground: root.bar ? root.bar.background : Commons.Color.background
-            fontFamily: barButton.fontFamily
-            badge: modelData.badge ? String(modelData.badge) : ""
-            compactBadge: true
-          }
-
-          UI.PlainText {
-            visible: chipDisplay.glyph !== ""
-            anchors.verticalCenter: parent.verticalCenter
-            text: chipDisplay.glyph
-            color: Qt.rgba(chipColor.r, chipColor.g, chipColor.b, 0.72)
-            font.family: barButton.fontFamily
-            font.pixelSize: Math.max(10, Style.font.bodySmall - 1)
-          }
-
-          UI.PlainText {
-            visible: chipDisplay.label !== ""
-            anchors.verticalCenter: parent.verticalCenter
-            text: chipDisplay.label
-            color: Qt.rgba(chipColor.r, chipColor.g, chipColor.b, root.barLabelStyle === "compact" ? 0.72 : 0.82)
-            font.family: barButton.fontFamily
-            font.pixelSize: Style.font.bodySmall
-          }
-
-          UI.PlainText {
-            visible: !!(modelData.value && String(modelData.value) !== "")
-            anchors.verticalCenter: parent.verticalCenter
-            text: String(modelData.value || "")
-            color: chipColor
-            font.family: barButton.fontFamily
-            font.pixelSize: Style.font.bodySmall
-            font.bold: modelData.severity === "critical" || modelData.severity === "warning"
+            delegate: UI.TopBarChip {
+              required property var modelData
+              item: modelData
+              palette: root.palette
+              foreground: barButton.foreground
+              urgent: barButton.activeColor
+              badgeBackground: root.bar ? root.bar.background : Commons.Color.background
+              fontFamily: barButton.fontFamily
+              barLabelStyle: root.barLabelStyle
+              barMeterStyle: root.barMeterStyle
+              useProviderColors: root.barProviderColors
+              compact: barCol.isStacked
+              rowHeight: chipStrip.stackedRowHeight
+            }
           }
         }
       }

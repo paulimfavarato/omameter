@@ -32,6 +32,9 @@
       "maxBarItems": 3,
       "alwaysShowInBar": false,
       "barLabelStyle": "full",
+      "barMeterStyle": "none",
+      "barLayout": "single",
+      "barProviderColors": false,
       "displayMode": "remaining",
       "resetDisplayMode": "relative",
       "showPaceMarks": false,
@@ -43,6 +46,7 @@
       "notifyCritical": false,
       "notifyBurningFast": false,
       "notifyUseItOrLoseIt": false,
+      "notifyReset": false,
       "privacyMode": false,
       "timeFormat": "auto",
       "refreshIntervalSec": 300
@@ -63,7 +67,7 @@
         "key": "maxBarItems",
         "type": "integer",
         "label": "Max items in top bar",
-        "description": "0 shows the Omameter icon only; up to 5 in Full style or up to 8 in Compact and Icons styles, followed by a +N overflow count.",
+        "description": "0 shows the Omameter icon only; up to 5 in single-row Full style or up to 8 in Compact, Icons, or Stacked layouts, followed by a +N overflow count.",
         "min": 0,
         "max": 8,
         "step": 1,
@@ -87,6 +91,37 @@
           "icon"
         ],
         "defaultValue": "full"
+      },
+      {
+        "key": "barMeterStyle",
+        "type": "enum",
+        "label": "Top bar progress meter",
+        "description": "Add a mini progress bar next to each bounded limit in the top bar: off, graphical bar, Unicode blocks, or slim braille.",
+        "options": [
+          "none",
+          "bar",
+          "blocks",
+          "braille"
+        ],
+        "defaultValue": "none"
+      },
+      {
+        "key": "barLayout",
+        "type": "enum",
+        "label": "Top bar layout",
+        "description": "Single row, or stacked two rows per column to fit more limits in less horizontal space.",
+        "options": [
+          "single",
+          "stacked"
+        ],
+        "defaultValue": "single"
+      },
+      {
+        "key": "barProviderColors",
+        "type": "boolean",
+        "label": "Provider colors in top bar",
+        "description": "Tint normal top-bar icons and meters with each provider's signature color; warning and critical alerts still use theme colors.",
+        "defaultValue": false
       },
       {
         "key": "displayMode",
@@ -177,6 +212,13 @@
         "type": "boolean",
         "label": "Notify on Use It or Lose It",
         "description": "Send a desktop notification when a multi-day limit resets within 24h with over 50% left.",
+        "defaultValue": false
+      },
+      {
+        "key": "notifyReset",
+        "type": "boolean",
+        "label": "Notify on Quota Reset",
+        "description": "Send a desktop notification when a used limit resets and fresh quota becomes available.",
         "defaultValue": false
       },
       {

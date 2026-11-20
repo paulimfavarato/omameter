@@ -20,6 +20,7 @@ from backend.models import (
 
 USE_IT_OR_LOSE_IT_LEAD_SEC = 24 * 3600  # 86_400s
 RESET_WINDOW_JITTER_TOLERANCE_SEC = 1.0
+RESET_NOTIFY_MIN_DROP = 0.20
 
 
 @dataclass(frozen=True)
@@ -234,10 +235,13 @@ class MetricNotificationState:
     resets_at: Optional[datetime] = None
     previous_severity: str = "normal"
     previous_bucket: str = "untracked"
+    previous_used_fraction: Optional[float] = None
     fired_milestones: Set[str] = field(default_factory=set)
 
 
 def milestone_title_and_body(milestone: str, limits: PriorityLimits) -> Tuple[str, str]:
+    if milestone == "reset":
+        return tr("notify.quotaReset", "Quota Reset"), tr("notify.quotaResetBody", "Limit reset — fresh quota available.")
     if milestone == "critical":
         return (
             tr("notify.critical", "Critical"),
@@ -284,7 +288,7 @@ def send_desktop_notification(title: str, subtitle: str, body: str, *, urgency: 
 class QuotaNotificationEvaluator:
     """State machine for QuotaNotificationEvaluator & PaceNotificationLogic."""
 
-    CANDIDATE_ORDER = ("burningFast", "critical", "warning", "useItOrLoseIt")
+    CANDIDATE_ORDER = ("reset", "burningFast", "critical", "warning", "useItOrLoseIt")
 
     def __init__(
         self,
@@ -350,14 +354,19 @@ class QuotaNotificationEvaluator:
         sev = line.severity(limits)
         bucket = _pace_bucket(st)
         unused = is_unused_near_reset(line, now)
+        used_frac = line.used_fraction
+        prev_used = prev.previous_used_fraction
+        prev_sev = prev.previous_severity
+        window_advanced = reset_window_advanced(resets, prev.resets_at, now)
 
         # Carry over / detect reset window advancement
-        if reset_window_advanced(resets, prev.resets_at, now):
+        if window_advanced:
             next_state = MetricNotificationState(
                 primed=prev.primed,
                 resets_at=resets,
                 previous_severity="normal",
                 previous_bucket="untracked",
+                previous_used_fraction=prev_used,
                 fired_milestones=set(),
             )
         else:
@@ -366,6 +375,7 @@ class QuotaNotificationEvaluator:
                 resets_at=resets or prev.resets_at,
                 previous_severity=prev.previous_severity,
                 previous_bucket=prev.previous_bucket,
+                previous_used_fraction=prev_used,
                 fired_milestones=set(prev.fired_milestones),
             )
 
@@ -377,6 +387,7 @@ class QuotaNotificationEvaluator:
             next_state.primed = True
             next_state.previous_bucket = bucket
             next_state.previous_severity = sev
+            next_state.previous_used_fraction = used_frac
             next_state.fired_milestones = {"useItOrLoseIt"} if unused else set()
             self._states[metric_id] = next_state
             return []
@@ -384,6 +395,21 @@ class QuotaNotificationEvaluator:
         held_bucket = next_state.previous_bucket
         held_severity = next_state.previous_severity
         fire: List[str] = []
+
+        # 0. quota reset (window rolled over or sharp usage drop back to normal)
+        dropped = prev_used is not None and (prev_used - used_frac) >= RESET_NOTIFY_MIN_DROP
+        recovered_from_alert = (
+            window_advanced
+            and prev_sev != "normal"
+            and sev == "normal"
+            and (prev_used is None or used_frac < prev_used)
+        )
+        if sev == "normal" and (dropped or recovered_from_alert):
+            if "reset" not in next_state.fired_milestones:
+                fire.append("reset")
+        elif used_frac >= RESET_NOTIFY_MIN_DROP or sev != "normal":
+            next_state.fired_milestones.discard("reset")
+        next_state.previous_used_fraction = used_frac
 
         # 1. burningFast
         if bucket != "untracked":

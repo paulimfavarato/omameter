@@ -278,6 +278,7 @@ class AccountRefresher:
             "critical": settings["notifyCritical"],
             "burningFast": settings["notifyBurningFast"],
             "useItOrLoseIt": settings["notifyUseItOrLoseIt"],
+            "reset": settings["notifyReset"],
         }
         reset_expiry_enabled = settings["notifyUseItOrLoseIt"] or settings["notifyWarning"]
         hidden_set = set(self.store.layout.get("hiddenMetricIDs") or [])

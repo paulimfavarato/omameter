@@ -134,6 +134,49 @@ function severityColor(severity, palette, fallbackFg, fallbackUrgent) {
   return fallbackFg || p.normal || "#cacccc"
 }
 
+// Per-provider signature tints tuned for dark and light bars.
+// Applied only to normal-severity bar items when `barProviderColors` is enabled;
+// warning and critical alerts always override with theme severity colors.
+var PROVIDER_COLORS = {
+  claude:      { dark: "#e08560", light: "#b5502c" },
+  codex:       { dark: "#5ec49f", light: "#157a5a" },
+  cursor:      { dark: "#79b8ff", light: "#2260b8" },
+  amp:         { dark: "#f27970", light: "#bf362c" },
+  antigravity: { dark: "#8ab4f8", light: "#1a56c4" },
+  copilot:     { dark: "#b392f0", light: "#6538b5" },
+  devin:       { dark: "#56d4c8", light: "#0e7a72" },
+  grok:        { dark: "#c6cdd5", light: "#3f464e" },
+  muse:        { dark: "#f08ec2", light: "#ad2e72" },
+  ollama:      { dark: "#b8c4d0", light: "#45515e" },
+  opencode:    { dark: "#f2c15a", light: "#9a6600" },
+  openrouter:  { dark: "#9e8cfc", light: "#563fc7" },
+  zai:         { dark: "#63b3ff", light: "#1563b8" }
+}
+
+function providerColor(kind, palette, fallback) {
+  var key = String(kind || "").toLowerCase()
+  var entry = PROVIDER_COLORS[key]
+  if (entry) {
+    return (palette && palette.isLight) ? entry.light : entry.dark
+  }
+  return fallback || (palette && palette.normal) || "#cacccc"
+}
+
+// Color for one top-bar chip. Warning/critical severity always overrides brand colors.
+// opts: { palette, foreground, urgent, useProviderColors }.
+function barItemColor(item, opts) {
+  var it = item || {}
+  var o = opts || {}
+  var sev = String(it.prioritySeverity || it.severity || "normal")
+  if (sev === "critical" || sev === "warning") {
+    return severityColor(sev, o.palette, o.foreground, o.urgent)
+  }
+  if (o.useProviderColors) {
+    return providerColor(it.kind, o.palette, o.foreground || (o.palette && o.palette.normal))
+  }
+  return severityColor("normal", o.palette, o.foreground, o.urgent)
+}
+
 // ---------------------------------------------------------------------------
 // Account naming: the one privacy rule and the one "provider · account" rule.
 // ---------------------------------------------------------------------------
@@ -457,6 +500,61 @@ function barChipDisplay(item, barLabelStyle) {
     return { label: tag || shortTitle, glyph: "" }
   }
   return { label: shortTitle, glyph: "" }
+}
+
+// Render a Unicode sub-cell progress meter for the top bar ("blocks" or "braille").
+// Returns "" for "none", "bar" (which uses a graphical Rectangle), or unknown styles.
+function formatBarMeter(fillFraction, style, length) {
+  var st = String(style || "none")
+  if (st !== "blocks" && st !== "braille") return ""
+  var f = clamp(fillFraction, 0, 1)
+  var len = (isFinite(Number(length)) && Number(length) >= 2) ? Math.floor(Number(length)) : 6
+  var partials, fullChar, emptyChar, steps
+  if (st === "blocks") {
+    partials = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"]
+    fullChar = "█"
+    emptyChar = "░"
+    steps = 8
+  } else {
+    partials = ["", "⣄", "⣤", "⣦", "⣶", "⣷"]
+    fullChar = "⣿"
+    emptyChar = "⣀"
+    steps = 6
+  }
+  var totalUnits = Math.round(f * len * steps)
+  var fullCount = Math.floor(totalUnits / steps)
+  var rem = totalUnits % steps
+  var chars = ""
+  for (var i = 0; i < fullCount; i++) chars += fullChar
+  if (fullCount < len) {
+    if (rem > 0) {
+      chars += partials[rem]
+      for (var j = fullCount + 1; j < len; j++) chars += emptyChar
+    } else {
+      for (var k = fullCount; k < len; k++) chars += emptyChar
+    }
+  }
+  return "[" + chars + "]"
+}
+
+// Group flat top-bar items into columns for rendering:
+//   "single"  -> one item per column: [[a], [b], [c]]
+//   "stacked" -> pairs stacked 2-high per column: [[a, b], [c, d], [e]]
+// A lone trailing item stays a 1-item column so it can use full single-row height.
+function groupBarColumns(items, layout) {
+  var list = Array.isArray(items) ? items : []
+  var cols = []
+  if (String(layout || "single") === "stacked" && list.length >= 2) {
+    for (var i = 0; i < list.length; i += 2) {
+      if (i + 1 < list.length) cols.push([list[i], list[i + 1]])
+      else cols.push([list[i]])
+    }
+    return cols
+  }
+  for (var j = 0; j < list.length; j++) {
+    cols.push([list[j]])
+  }
+  return cols
 }
 
 // Disambiguate metrics whose shortTitle omits the window (e.g. Antigravity "Gemini" weekly -> "Gemini 7d").

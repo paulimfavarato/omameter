@@ -68,6 +68,14 @@ test("normalizePatch returns only the touched keys, both thresholds when one mov
     { barLabelStyle: "icon" }
   );
   assert.deepEqual(
+    plain(S.normalizePatch({ barLayout: "single" }, { barLabelStyle: "full", barLayout: "stacked", maxBarItems: 8 })),
+    { barLayout: "single", maxBarItems: 5 }
+  );
+  assert.deepEqual(
+    plain(S.normalizePatch({ maxBarItems: 8 }, { barLabelStyle: "full", barLayout: "stacked", maxBarItems: 4 })),
+    { maxBarItems: 8 }
+  );
+  assert.deepEqual(
     plain(S.normalizePatch({ criticalThreshold: 20 }, { warningThreshold: 20, criticalThreshold: 15 })),
     { warningThreshold: 25, criticalThreshold: 20 }
   );

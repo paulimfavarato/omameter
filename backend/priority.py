@@ -754,6 +754,9 @@ def build_dashboard_state(
             "title": it["title"],
             "amountText": it["amountText"],
             "resetsAt": it["resetsAt"],
+            "isBounded": bool(it.get("isBounded", False)),
+            "fillFraction": it.get("fillFraction", 0.0),
+            "paceMark": it.get("paceMark"),
         }
 
     bar_items: List[Dict[str, Any]] = []

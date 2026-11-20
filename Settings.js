@@ -12,6 +12,9 @@ var SCHEMA = [
   { key: "maxBarItems", type: "integer", min: 0, max: 8, step: 1, defaultValue: 3 },
   { key: "alwaysShowInBar", type: "boolean", defaultValue: false },
   { key: "barLabelStyle", type: "enum", options: ["full", "compact", "icon"], defaultValue: "full" },
+  { key: "barMeterStyle", type: "enum", options: ["none", "bar", "blocks", "braille"], defaultValue: "none" },
+  { key: "barLayout", type: "enum", options: ["single", "stacked"], defaultValue: "single" },
+  { key: "barProviderColors", type: "boolean", defaultValue: false },
   { key: "displayMode", type: "enum", options: ["remaining", "used"], defaultValue: "remaining" },
   { key: "resetDisplayMode", type: "enum", options: ["relative", "absolute"], defaultValue: "relative" },
   { key: "showPaceMarks", type: "boolean", defaultValue: false },
@@ -23,6 +26,7 @@ var SCHEMA = [
   { key: "notifyCritical", type: "boolean", defaultValue: false },
   { key: "notifyBurningFast", type: "boolean", defaultValue: false },
   { key: "notifyUseItOrLoseIt", type: "boolean", defaultValue: false },
+  { key: "notifyReset", type: "boolean", defaultValue: false },
   { key: "privacyMode", type: "boolean", defaultValue: false },
   { key: "timeFormat", type: "enum", options: ["auto", "12h", "24h"], defaultValue: "auto" },
   { key: "refreshIntervalSec", type: "integer", min: 60, max: 3600, step: 60, defaultValue: 300 }
@@ -38,10 +42,11 @@ var WARNING = "warningThreshold"
 var CRITICAL = "criticalThreshold"
 var MAX_BAR_ITEMS_FULL = 5
 
-function maxBarItemsCap(barLabelStyle) {
+function maxBarItemsCap(barLabelStyle, barLayout) {
   var schemaMax = FIELDS.maxBarItems.max
   var style = String(barLabelStyle || "full")
-  if (style === "compact" || style === "icon") return schemaMax
+  var layout = String(barLayout || "single")
+  if (layout === "stacked" || style === "compact" || style === "icon") return schemaMax
   return Math.min(schemaMax, MAX_BAR_ITEMS_FULL)
 }
 
@@ -114,7 +119,7 @@ function normalize(raw) {
     var f = SCHEMA[i]
     out[f.key] = Object.prototype.hasOwnProperty.call(src, f.key) ? coerce(f, src[f.key]) : f.defaultValue
   }
-  out.maxBarItems = Math.min(out.maxBarItems, maxBarItemsCap(out.barLabelStyle))
+  out.maxBarItems = Math.min(out.maxBarItems, maxBarItemsCap(out.barLabelStyle, out.barLayout))
   var lim = linkLimits(out[WARNING], out[CRITICAL])
   out[WARNING] = lim.warning
   out[CRITICAL] = lim.critical
@@ -143,8 +148,8 @@ function applyPatch(current, patch) {
 }
 
 // The keys a patch touches, with the values they end up with; touching one
-// threshold reports both, since the other may be pushed, and switching barLabelStyle
-// to "full" also reports maxBarItems when it gets clamped down to 5.
+// threshold reports both, since the other may be pushed, and switching into
+// single-row "full" style also reports maxBarItems when it gets clamped down to 5.
 function normalizePatch(patch, current) {
   var base = normalize(current)
   var next = applyPatch(base, patch)
@@ -159,7 +164,7 @@ function normalizePatch(patch, current) {
     out[WARNING] = next[WARNING]
     out[CRITICAL] = next[CRITICAL]
   }
-  if (out.hasOwnProperty("barLabelStyle") && next.maxBarItems !== base.maxBarItems) {
+  if ((out.hasOwnProperty("barLabelStyle") || out.hasOwnProperty("barLayout")) && next.maxBarItems !== base.maxBarItems) {
     out.maxBarItems = next.maxBarItems
   }
   return any ? out : null

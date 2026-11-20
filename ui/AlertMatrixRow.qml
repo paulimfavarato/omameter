@@ -6,12 +6,14 @@ import qs.Ui
 // One row of the Settings -> Alerts "Priority / Notify" matrix: label on the
 // left, then two fixed 58px columns with compact switches. A milestone that is
 // always in Priority (Warning, Critical) sets `priorityFixed` and shows a dim
-// check mark instead of a switch. The caller owns both values.
+// check mark instead of a switch; a notify-only event (Quota Reset) sets
+// `notifyOnly` and shows a dim dash. The caller owns both values.
 Item {
   id: root
 
   property string label: ""
   property bool priorityFixed: false
+  property bool notifyOnly: false
   property bool priorityChecked: false
   property bool notifyChecked: false
   property color foreground: Commons.Color.popups.text
@@ -40,18 +42,18 @@ Item {
     height: parent.height
 
     PlainText {
-      visible: root.priorityFixed
+      visible: root.priorityFixed || root.notifyOnly
       anchors.verticalCenter: parent.verticalCenter
       width: parent.width
       horizontalAlignment: Text.AlignHCenter
-      text: "✓"
-      color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.5)
+      text: root.notifyOnly ? "—" : "✓"
+      color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, root.notifyOnly ? 0.35 : 0.5)
       font.family: root.fontFamily
       font.pixelSize: Style.font.body
     }
 
     ToggleSwitch {
-      visible: !root.priorityFixed
+      visible: !root.priorityFixed && !root.notifyOnly
       anchors.centerIn: parent
       trackHeight: 18
       checked: root.priorityChecked
