@@ -104,6 +104,7 @@ class OmameterDaemon:
         clock: Optional[Any] = None,
         executor: Optional[Any] = None,
         out: Optional[TextIO] = None,
+        analytics_recorder: Optional[Any] = None,
     ) -> None:
         """Every collaborator is injectable; the defaults are the production ones.
 
@@ -111,6 +112,7 @@ class OmameterDaemon:
         `backend.refresh.SystemClock`); `executor` needs `submit(fn, *args)` and
         `shutdown(wait=False)`; `out` receives the NDJSON lines.
         """
+        is_production_store = store is None
         self.store = store if store is not None else OmameterStore()
         self.vault = vault if vault is not None else CredentialVault()
         self.backoff = RefreshBackoff()
@@ -120,6 +122,14 @@ class OmameterDaemon:
         self._clock = clock if clock is not None else SystemClock()
         self._out: TextIO = out if out is not None else sys.stdout
         self._hub_gate = CLIProxyHubGate()
+        self._analytics_recorder = analytics_recorder
+        if self._analytics_recorder is None and is_production_store:
+            try:
+                from backend.analytics.service import AnalyticsService
+
+                self._analytics_recorder = AnalyticsService()
+            except Exception:
+                self._analytics_recorder = None
 
         self._lock = threading.RLock()
         self._stdout_lock = threading.Lock()
@@ -140,6 +150,7 @@ class OmameterDaemon:
             notifier=self.notifier,
             make_http=lambda acc: self._make_http_client(acc),
             clock=self._clock,
+            on_snapshot_recorded=self._record_quota_sample,
         )
         self.accounts = AccountLifecycle(
             store=self.store,
@@ -157,6 +168,14 @@ class OmameterDaemon:
 
     def _refresh_interval(self) -> int:
         return refresh_interval_sec(self.store.settings)
+
+    def _record_quota_sample(self, account: Account, snapshot: Any, now: datetime) -> None:
+        if self._analytics_recorder is None:
+            return
+        try:
+            self._analytics_recorder.record_snapshot(account, snapshot, now)
+        except Exception:
+            pass
 
     def _make_http_client(self, account: Optional[Account] = None) -> HTTPClient:
         base_client = HTTPClient(proxy=self.proxy)

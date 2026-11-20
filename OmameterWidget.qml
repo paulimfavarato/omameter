@@ -158,6 +158,11 @@ Panel {
     dispatch({ type: "openSettings" })
   }
 
+  function openAnalytics(tab, provider, period) {
+    if (service) service.openAnalytics(tab || "", provider || "", period || "")
+    close()
+  }
+
   function setDashboardTab(tab) {
     dispatch({ type: "setDashboardTab", tab: tab })
   }
@@ -532,6 +537,10 @@ Panel {
             root.openAccounts(null)
             return
           }
+          if (text === "g" || text === "G") {
+            root.openAnalytics("", "", "")
+            return
+          }
           if (root.viewMode === "dashboard") {
             if (text === "1") root.setDashboardTab("priority")
             else if (text === "2") root.setDashboardTab("all")
@@ -619,12 +628,23 @@ Panel {
           }
         }
 
-        // Right: Quick actions (Accounts, Refresh, Settings)
+        // Right: Quick actions (Analytics, Accounts, Refresh, Settings)
         Row {
           id: rightActions
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
           spacing: Style.space(3)
+
+          PanelActionButton {
+            iconText: "󰄪"
+            tooltipText: Model.autoTextSafe(root.t("nav.analytics", "Analytics") + " (G)", false)
+            size: Style.space(26)
+            fontSize: Style.font.body
+            foreground: root.fg
+            hoverColor: root.accentColor
+            fontFamily: root.fontFamily
+            onClicked: root.openAnalytics("", "", "")
+          }
 
           PanelActionButton {
             iconText: "󰀄"

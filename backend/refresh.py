@@ -127,6 +127,7 @@ class AccountRefresher:
         make_http: Callable[[Account], HTTPClient],
         clock: Any,
         secondary_reads: Optional[SecondaryReads] = None,
+        on_snapshot_recorded: Optional[Callable[[Account, ProviderSnapshot, datetime], None]] = None,
     ) -> None:
         self.store = store
         self.vault = vault
@@ -136,6 +137,7 @@ class AccountRefresher:
         self.make_http = make_http
         self.clock = clock
         self.secondary_reads = secondary_reads if secondary_reads is not None else SecondaryReads()
+        self.on_snapshot_recorded = on_snapshot_recorded
         self._errors: Dict[str, Tuple[str, str]] = {}  # account id -> (kind, message)
 
     # -- per-account error map ---------------------------------------------
@@ -258,6 +260,11 @@ class AccountRefresher:
             self.mark_healthy(account.id)
             if snapshot.account_label_discovered and is_default_label(account.kind, account.label):
                 self.store.update_account(account.id, label=snapshot.account_label_discovered)
+            if self.on_snapshot_recorded is not None:
+                try:
+                    self.on_snapshot_recorded(account, snapshot, now)
+                except Exception:
+                    pass
             self._evaluate_notifications_and_burning(account, snapshot, now)
         elif outcome.status == "failed":
             kind = outcome.error_kind or "refused"

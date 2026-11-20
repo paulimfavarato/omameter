@@ -75,6 +75,7 @@ Item {
   property bool _writingShellSettings: false
 
   readonly property string daemonPath: Qt.resolvedUrl("backend/daemon.py").toString().replace(/^file:\/\//, "")
+  readonly property string analyticsLauncherPath: Qt.resolvedUrl("bin/omameter-analytics").toString().replace(/^file:\/\//, "")
 
   function registerInstance(item) {
     if (!item) return
@@ -240,6 +241,27 @@ Item {
   function openUrl(url) {
     if (Model.isSafeExternalUrl(url)) {
       Qt.openUrlExternally(String(url).trim())
+    }
+  }
+
+  function openAnalytics(tab, provider, period) {
+    var cmd = ["/usr/bin/bash", root.analyticsLauncherPath]
+    if (tab && String(tab).trim() !== "") {
+      cmd.push("--tab")
+      cmd.push(String(tab).trim())
+    }
+    if (provider && String(provider).trim() !== "") {
+      cmd.push("--provider")
+      cmd.push(String(provider).trim())
+    }
+    if (period && String(period).trim() !== "") {
+      cmd.push("--period")
+      cmd.push(String(period).trim())
+    }
+    try {
+      Quickshell.execDetached(cmd)
+    } catch (e) {
+      console.warn("paulimfavarato.omameter: openAnalytics failed:", e)
     }
   }
 
@@ -427,6 +449,7 @@ Item {
     function close(): string { return root.invokePanelAction("hide") }
     function hide(): string { return root.invokePanelAction("hide") }
     function refresh(): string { root.refreshAll(true); return "ok" }
+    function analytics(): string { root.openAnalytics("", "", ""); return "ok" }
     function status(): string {
       return JSON.stringify({
         ready: root.ready,

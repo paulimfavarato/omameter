@@ -247,6 +247,7 @@ class HTTPClient:
         form_body: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None,
         use_curl: bool = False,
+        max_bytes: Optional[int] = None,
     ) -> HTTPResponse:
         parsed_scheme = (urllib.parse.urlsplit(url).scheme or "").lower()
         if parsed_scheme not in ("http", "https"):
@@ -264,10 +265,11 @@ class HTTPClient:
             req_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
 
         eff_timeout = timeout or self.timeout
+        eff_max_bytes = max(1024, int(max_bytes)) if max_bytes is not None else MAX_RESPONSE_BYTES
         needs_curl = use_curl or (self.proxy.enabled and self.proxy.url.lower().startswith("socks5://"))
         if needs_curl:
-            return self._request_curl(method, url, req_headers, payload, eff_timeout)
-        return self._request_urllib(method, url, req_headers, payload, eff_timeout)
+            return self._request_curl(method, url, req_headers, payload, eff_timeout, eff_max_bytes)
+        return self._request_urllib(method, url, req_headers, payload, eff_timeout, eff_max_bytes)
 
     def get(self, url: str, **kwargs: Any) -> HTTPResponse:
         return self.request("GET", url, **kwargs)
@@ -296,18 +298,26 @@ class HTTPClient:
         headers: Dict[str, str],
         body: Optional[bytes],
         timeout: float,
+        max_bytes: int = MAX_RESPONSE_BYTES,
     ) -> HTTPResponse:
         opener = self._build_urllib_opener()
         req = urllib.request.Request(url, data=body, headers=headers, method=method.upper())
         try:
             with opener.open(req, timeout=timeout) as resp:
-                raw = resp.read(MAX_RESPONSE_BYTES + 1)
-                if len(raw) > MAX_RESPONSE_BYTES:
-                    raise HTTPTransportError(tr("net.responseTooLarge", "Response exceeded 4 MiB safety limit"))
+                raw = resp.read(max_bytes + 1)
+                if len(raw) > max_bytes:
+                    msg = (
+                        tr("net.responseTooLarge", "Response exceeded 4 MiB safety limit")
+                        if max_bytes == MAX_RESPONSE_BYTES
+                        else tr("net.responseOverLimit", "Response exceeded safety limit")
+                    )
+                    raise HTTPTransportError(msg)
                 resp_headers = {k.lower(): v for k, v in resp.headers.items()}
                 return HTTPResponse(status=int(resp.status), headers=resp_headers, body=raw)
+        except HTTPTransportError:
+            raise
         except urllib.error.HTTPError as err:
-            raw = err.read(MAX_RESPONSE_BYTES) if err.fp else b""
+            raw = err.read(max_bytes) if err.fp else b""
             resp_headers = {k.lower(): v for k, v in err.headers.items()} if err.headers else {}
             return HTTPResponse(status=int(err.code), headers=resp_headers, body=raw)
         except urllib.error.URLError as err:
@@ -326,6 +336,7 @@ class HTTPClient:
         headers: Dict[str, str],
         body: Optional[bytes],
         timeout: float,
+        max_bytes: int = MAX_RESPONSE_BYTES,
     ) -> HTTPResponse:
         config_lines = [f"url = {_curl_quote(url)}"]
         if self.proxy.enabled and self.proxy.url:
@@ -340,7 +351,7 @@ class HTTPClient:
             "--max-time",
             str(max(1, int(round(timeout)))),
             "--max-filesize",
-            str(MAX_RESPONSE_BYTES),
+            str(max_bytes),
             "-X",
             method.upper(),
             "-D",
@@ -400,7 +411,7 @@ class HTTPClient:
             raise HTTPTransportError(err_msg, offline=not is_timeout, timeout=is_timeout)
 
         raw = proc.stdout
-        if len(raw) > MAX_RESPONSE_BYTES + 65536:
+        if len(raw) > max_bytes + 65536:
             raise HTTPTransportError(tr("net.responseOverLimit", "Response exceeded safety limit"))
 
         # Parse final HTTP header block (skipping 100-Continue or proxy CONNECT headers)
@@ -434,4 +445,4 @@ class HTTPClient:
             body_bytes = raw[pos:]
             break
 
-        return HTTPResponse(status=status_code, headers=resp_headers, body=body_bytes[:MAX_RESPONSE_BYTES])
+        return HTTPResponse(status=status_code, headers=resp_headers, body=body_bytes[:max_bytes])

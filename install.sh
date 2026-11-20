@@ -39,12 +39,15 @@ tar -C "$SCRIPT_DIR" \
   --exclude='.pytest_cache' \
   -cf - . | tar -C "$TARGET_DIR" -xf -
 
-chmod +x "$TARGET_DIR/bin/omameter" "$TARGET_DIR/backend/daemon.py" "$TARGET_DIR/install.sh" "$TARGET_DIR/uninstall.sh"
+chmod +x "$TARGET_DIR/bin/omameter" "$TARGET_DIR/bin/omameter-analytics" "$TARGET_DIR/backend/daemon.py" "$TARGET_DIR/backend/analytics/cli.py" "$TARGET_DIR/install.sh" "$TARGET_DIR/uninstall.sh"
 
-echo "==> Installing CLI helper to ${CLI_TARGET}..."
+echo "==> Installing CLI helpers to ${CLI_BIN_DIR}..."
 mkdir -p "$CLI_BIN_DIR"
 printf '#!/usr/bin/env bash\nexec python3 %q "$@"\n' "${TARGET_DIR}/bin/omameter" > "$CLI_TARGET"
 chmod +x "$CLI_TARGET"
+ANALYTICS_TARGET="${CLI_BIN_DIR}/omameter-analytics"
+printf '#!/usr/bin/env bash\nexec bash %q "$@"\n' "${TARGET_DIR}/bin/omameter-analytics" > "$ANALYTICS_TARGET"
+chmod +x "$ANALYTICS_TARGET"
 
 if command -v omarchy >/dev/null 2>&1; then
   echo "==> Validating installed copy..."

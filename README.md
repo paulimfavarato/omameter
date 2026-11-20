@@ -31,6 +31,9 @@ Omameter is a native [Omarchy](https://omarchy.org) shell plugin (`service` + `b
 - **Accounts manager inside the panel** — browser OAuth (loopback, dual-stack IPv4/IPv6), Device Code, API keys and CLIProxyAPI hubs; the sign-in flow survives the popup closing when the browser takes focus.
 - **Opt-in local import** — a *Detect Local Logins* button imports existing Claude Code, Codex CLI, GitHub CLI (`gh`) logins or API-key environment variables, on demand only.
 - **Secure storage** — credentials live in the system keyring via `secret-tool` (libsecret), with a `0600` file fallback; tokens never reach the QML side or logs.
+- **Analytics window (`omameter-analytics`)** — opens on demand as a centered floating Quickshell window (0 MB overhead in `omarchy-shell` when closed), following your active Omarchy theme, font and Hyprland corner rounding:
+  - **Quota Burn-Rate History & Cloud Spend** — automatically records quota samples into a local SQLite ledger on every refresh, with burn-rate curves, cloud-billed USD lines and *Tokens since reset* drill-downs.
+  - **Opt-in Local Token & API-Equivalent Cost Analytics** — disabled by default; when enabled, incrementally scans local session logs from installed harnesses (**Claude Code**, **GPT Codex**, **Antigravity**, **OpenCode**) with live scan progress, cache hit rate & savings, monthly plan ROI, a bundled 50-model pricing catalog, on-demand **LiteLLM** catalog sync, and custom model price overrides / aliases. Never depends on external services.
 - **Privacy mode** — icon-only top bar and masked account names.
 - **Proxy support** — SOCKS5, HTTP or HTTPS proxy for all requests.
 - **`omameter` CLI** — read-only JSON (`omameter.limits.v2`) from the local cache, for scripts and status bars.
@@ -77,7 +80,7 @@ cd omameter
 
 1. validates the plugin with `omarchy plugin validate`;
 2. copies the plugin (without symlinks, tests or CI files) to `~/.config/omarchy/plugins/paulimfavarato.omameter`;
-3. installs the `omameter` CLI wrapper to `~/.local/bin/omameter`;
+3. installs the `omameter` and `omameter-analytics` CLI wrappers to `~/.local/bin/`;
 4. enables the widget on the right side of the top bar.
 
 To **update**, pull and run `./install.sh` again: it replaces the installed copy and runs `omarchy-restart-shell` so the new QML and daemon load. Your accounts and settings are kept.
@@ -88,38 +91,39 @@ To **update**, pull and run `./install.sh` again: it replaces the installed copy
 omarchy plugin add https://github.com/paulimfavarato/omameter.git --enable
 ```
 
-This clones the repository straight into the plugins folder (update later with `omarchy plugin update paulimfavarato.omameter`). It doesn't install the CLI; to get it, link the bundled script:
+This clones the repository straight into the plugins folder (update later with `omarchy plugin update paulimfavarato.omameter`). It doesn't install the CLIs; to get them, link the bundled scripts:
 
 ```bash
 ln -s ~/.config/omarchy/plugins/paulimfavarato.omameter/bin/omameter ~/.local/bin/omameter
+ln -s ~/.config/omarchy/plugins/paulimfavarato.omameter/bin/omameter-analytics ~/.local/bin/omameter-analytics
 ```
 
 ### Global shortcut (optional)
 
-Bind a key in `~/.config/hypr/bindings.conf` to open the panel from anywhere:
+Bind a key in `~/.config/hypr/bindings.conf` (or `bindings.lua`) to open the panel from anywhere:
 
 ```ini
 bindd = SUPER ALT, U, Omameter, exec, omarchy-shell paulimfavarato.omameter toggle
 ```
 
-Other IPC calls: `open`, `close`, `refresh` and `status` (JSON summary of the bar).
+Other IPC calls: `open`, `close`, `refresh`, `analytics` and `status` (JSON summary of the bar).
 
 ## Uninstall
 
 ```bash
-./uninstall.sh            # remove the plugin and CLI, keep accounts and settings
+./uninstall.sh            # remove the plugin and CLIs, keep accounts and settings
 ./uninstall.sh --purge    # also delete Omameter's data and keyring entries
 ```
 
-If you installed with `omarchy plugin add`, use `omarchy plugin remove paulimfavarato.omameter` (and delete the CLI link if you made one).
+If you installed with `omarchy plugin add`, use `omarchy plugin remove paulimfavarato.omameter` (and delete the CLI links if you made them).
 
 Data locations (kept unless you use `--purge`):
 
 | Path | Contents |
 |---|---|
-| `~/.config/omameter/` | `accounts.json`, `settings.json`, `layout.json`, `proxy.json` |
-| `~/.cache/omameter/snapshots.json` | last fetched usage (read by the CLI) |
-| `~/.local/share/omameter/vault.json` | credentials, only when `secret-tool` is unavailable (`0600`) |
+| `~/.config/omameter/` | `accounts.json`, `settings.json`, `layout.json`, `analytics.json`, `proxy.json` |
+| `~/.cache/omameter/` | `snapshots.json` (read by the CLI), `litellm_rates.json` (optional LiteLLM pricing cache) |
+| `~/.local/share/omameter/` | `analytics.db` (local SQLite quota/token ledger), `vault.json` (credentials fallback when `secret-tool` is unavailable, `0600`) |
 | keyring (`secret-tool`) | services `com.omarchy.omameter.accounts` and `com.omarchy.omameter.cliproxy-hubs` |
 
 ## Usage
@@ -169,6 +173,7 @@ Settings are available in the panel (**Settings**: General, Display, Alerts, Adv
 | Burning Fast / Use It or Lose It in Priority | on | |
 | Notifications | off | Warning, Critical, Burning Fast, Use It or Lose It |
 | Privacy mode | off | Icon-only bar, masked account names |
+| Local Token & Cost Analytics | off | Opt-in incremental scan of local harness logs (Claude Code, Codex, Antigravity, OpenCode) |
 | Time format | Auto | Auto, 12h or 24h |
 | Refresh interval | 300 s | 60–3600 s |
 
@@ -181,9 +186,12 @@ omameter                  # every account, as omameter.limits.v2 JSON
 omameter claude           # only Claude accounts
 omameter codex@1a2b3c4d   # one account by card id
 omameter --help
+
+omameter-analytics                                    # launch or focus floating Analytics window
+omameter-analytics --tab quotas --provider claude     # jump straight to a tab or harness
 ```
 
-The CLI only reads the local cache: it never refreshes, signs in or opens the keyring.
+The `omameter` CLI only reads the local cache: it never refreshes, signs in or opens the keyring.
 
 | Exit code | Meaning |
 |---|---|
@@ -197,7 +205,7 @@ The CLI only reads the local cache: it never refreshes, signs in or opens the ke
 python3 -m unittest discover -s tests -v                                  # Python tests (stdlib only)
 node --test tests/*.mjs                                                   # Model.js, Navigation.js, Settings.js, Protocol.js
 python3 scripts/check_i18n.py                                             # JSON + en/pt-BR parity + key usage
-/usr/bin/qmllint -I /usr/share/omarchy/shell OmameterService.qml OmameterWidget.qml ui/*.qml
+/usr/bin/qmllint -I /usr/share/omarchy/shell OmameterService.qml OmameterWidget.qml ui/*.qml analytics/*.qml
 omarchy plugin validate .
 ./install.sh                                                              # install and reload the shell
 ```
@@ -213,8 +221,9 @@ CI (`.github/workflows/ci.yml`) runs the Python and Node tests and the i18n/JSON
 | [`OmameterWidget.qml`](OmameterWidget.qml) | Top bar widget and keyboard panel |
 | [`Model.js`](Model.js), [`Navigation.js`](Navigation.js), [`Settings.js`](Settings.js), [`Protocol.js`](Protocol.js) | Pure JS: formatting, panel state machine, settings rules, NDJSON protocol |
 | [`ui/`](ui) | QML components (tabs, bars, rings, accounts, settings) |
-| [`backend/`](backend) | Python daemon, providers, OAuth / Device Code, pace & priority logic, resets, vault, CLIProxyAPI, i18n |
-| [`bin/omameter`](bin/omameter) | Read-only CLI |
+| [`analytics/`](analytics) | Standalone floating Quickshell Analytics window (quota history, token/cost charts, sources & pricing) |
+| [`backend/`](backend) | Python daemon, providers, OAuth / Device Code, pace & priority logic, resets, vault, CLIProxyAPI, i18n, analytics (`backend/analytics/`) |
+| [`bin/omameter`](bin/omameter), [`bin/omameter-analytics`](bin/omameter-analytics) | Read-only limits CLI and floating Analytics launcher |
 | [`i18n/`](i18n) | Translations (`en.json`, `pt-BR.json`) shared by QML and the daemon |
 | [`scripts/check_i18n.py`](scripts/check_i18n.py) | Catalog and JSON checks |
 | [`tests/`](tests) | `unittest` and `node --test` suites |

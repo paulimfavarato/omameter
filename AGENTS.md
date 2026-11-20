@@ -54,9 +54,23 @@ Omarchy Top Bar (1+ monitors)
         ├── backend/settings.py    (reads manifest.json barWidget.schema: DEFAULT_SETTINGS, normalize_settings, apply_patch, PriorityLimits with schema limits; unreadable manifest → SettingsSchemaError)
         ├── backend/store.py       (JSON persistence + layout undo stack; settings via backend/settings.py)
         ├── backend/vault.py       (secret-tool / libsecret with 0600 fallback in vault.json)
-        └── backend/limits_envelope.py (schema omameter.limits.v2)
+        ├── backend/limits_envelope.py (schema omameter.limits.v2)
+        └── backend/analytics/     (Phase 1 quota history + Phase 2 opt-in local token & API-equiv cost analytics:
+                                    db.py (SQLite WAL ledger: quota_samples, token_events, file_scan_state),
+                                    parsers.py (incremental byte-offset + 64-byte guard-hash scanners for Claude Code,
+                                    GPT Codex, Antigravity, OpenCode — strictly local harnesses, never ~/.t3),
+                                    pricing.py + pricing_catalog.json (50 bundled models, context/speed tiers,
+                                    on-demand LiteLLM sync via HTTPClient max_bytes=16 MiB, overrides & aliases),
+                                    service.py (quota recording, streaming progress scans, aggregation, Since Reset),
+                                    cli.py (NDJSON worker `--serve` spawned only while the Analytics window is open))
 
+analytics/                        (standalone Quickshell floating window; 0 MB in omarchy-shell when closed:
+                                   shell.qml, BarTrendChart.qml, QuotaLineChart.qml, PlainText.qml, qmldir;
+                                   reads ~/.local/state/omarchy/current/theme/{colors,shell}.toml + ~/.config/omarchy/shell.toml
+                                   and Hyprland decoration:rounding live)
 bin/omameter                      (read-only CLI over the local cache; exit codes 0 / 2 / 4)
+bin/omameter-analytics            (launches or focuses the standalone Analytics window floating & centered via
+                                   Hyprland Lua `hl.window_rule` / `hl.dsp.focus` with legacy fallbacks)
 
 i18n/en.json, i18n/pt-BR.json     (UI catalogs shared by QML/JS and backend/i18n.py)
 scripts/check_i18n.py             (JSON validity of manifest, catalogs and fixtures; key/placeholder/plural parity across
@@ -64,7 +78,7 @@ scripts/check_i18n.py             (JSON validity of manifest, catalogs and fixtu
                                    (QML/JS) key exists with English text equal to the fallback; no unused catalog keys
                                    (dynamic prefixes card., metric., unit., data.); run by tests/test_i18n.py)
 install.sh                        (copies the plugin via tar, without symlinks; excludes tests/, scripts/, .github/, .gitignore)
-uninstall.sh                      (disables the plugin, removes it and the CLI wrapper; --purge also deletes ~/.config/omameter,
+uninstall.sh                      (disables the plugin, removes it and the CLI wrappers; --purge also deletes ~/.config/omameter,
                                    the cache, ~/.local/share/omameter and the secret-tool entries)
 .github/workflows/ci.yml          (CI: Python unittest, node --test, scripts/check_i18n.py)
 ```
@@ -74,12 +88,11 @@ Translation boundary: snapshots, the cache and the `bin/omameter` CLI stay Engli
 ### On-disk paths on the user's system
 - **Working repository:** the repository root
 - **Installed plugin (copy without symlinks):** `~/.config/omarchy/plugins/paulimfavarato.omameter`
-- **Installed CLI:** `~/.local/bin/omameter`
+- **Installed CLIs:** `~/.local/bin/omameter`, `~/.local/bin/omameter-analytics`
 - **Real user data (NEVER delete/corrupt in tests):**
-  - `~/.config/omameter/` (`accounts.json`, `settings.json`, `layout.json`)
-  - `$XDG_CACHE_HOME/omameter/snapshots.json` (default `~/.cache/omameter/`; see `CACHE_DIR` in `backend/store.py`)
-  - `~/.local/share/omameter/vault.json` (`0600` fallback when `secret-tool` is not available)
-  - `~/.config/omameter/proxy.json` (proxy configuration)
+  - `~/.config/omameter/` (`accounts.json`, `settings.json`, `layout.json`, `analytics.json`, `proxy.json`)
+  - `$XDG_CACHE_HOME/omameter/` (`snapshots.json`, `litellm_rates.json`; default `~/.cache/omameter/`, see `CACHE_DIR` in `backend/store.py`)
+  - `~/.local/share/omameter/` (`analytics.db`, `vault.json` `0600` fallback when `secret-tool` is not available)
 
 ---
 
@@ -94,6 +107,7 @@ Translation boundary: snapshots, the cache and the `bin/omameter` CLI stay Engli
 6. **Upgrades require `omarchy-restart-shell`** — `omarchy-shell shell rescanPlugins` does **not** reload QML already compiled in memory nor restart a running `backend/daemon.py`. [`install.sh`](install.sh) already detects a reinstall and calls `omarchy-restart-shell` automatically. Never use `omarchy-refresh-shell` (it resets the user's `shell.json`).
 7. **Settings: one source and one write path** — a new settings key goes first into the `schema` (and `defaults`) of [`manifest.json`](manifest.json); then into [`Settings.js`](Settings.js) (the parity tests `tests/test_settings.mjs` / `tests/test_settings.py` enforce the rest; shared edge cases live in `tests/fixtures/settings_cases.json`). To change a setting from QML call only `service.changeSettings(patch)` (normalizes, sends `update_settings` and writes `shell.json`, marking the echo as seen); never `sendCmd({cmd:"update_settings"})` nor `setBarWidget` by hand. External edits to `shell.json` go through `syncWidgetSettings` → `Settings.reconcile` (the first read only records; with the daemon down it stays pending until `ready`). In the backend read normalized settings (`normalize_settings`/`PriorityLimits.from_settings`), never `settings.get(k, literal)`.
 8. **i18n always in sync, English-only repo** — every user-visible string in QML/JS/Python goes through the catalogs (QML `t()`/`tn()`; Python `backend.i18n.tr()`), and is added to **both** [`i18n/en.json`](i18n/en.json) and [`i18n/pt-BR.json`](i18n/pt-BR.json) with exact key parity; the English catalog value must equal the fallback written in code. `python3 scripts/check_i18n.py` must pass. The whole repo (code, comments, docs, tests) is English-only; only `i18n/pt-BR.json` holds Portuguese.
+9. **Standalone [`analytics/`](analytics) window is self-contained & matches Omarchy's active theme** — Quickshell blocks parent-directory imports (`qrc:/qs-blackhole`), so never `import "../..."` inside `analytics/`; use [`analytics/PlainText.qml`](analytics/PlainText.qml). Read `~/.local/state/omarchy/current/theme/{colors,shell}.toml` (+ `~/.config/omarchy/shell.toml`), use `"monospace"` (`Style.font.family`), and match Hyprland's `decoration:rounding` (`cornerRadius`). [`bin/omameter-analytics`](bin/omameter-analytics) launches floating & centered via `hyprctl eval 'hl.window_rule(...)'` and focuses via `hl.dsp.focus(...)` (with legacy `windowrulev2`/`focuswindow` fallbacks).
 
 ### Backend / OAuth / Security
 1. **Default `User-Agent` in [`backend/http_client.py`](backend/http_client.py)** — keep `User-Agent: Omameter/1.0` when the caller does not send a `User-Agent`. Without it, `Python-urllib/3.x` gets **HTTP 403 (Cloudflare Error 1010)** on `https://platform.claude.com/v1/oauth/token`.
@@ -104,6 +118,7 @@ Translation boundary: snapshots, the cache and the `bin/omameter` CLI stay Engli
 6. **Zero idle 30s re-emission** — [`backend/daemon.py`](backend/daemon.py) only re-emits `state` in the idle loop when `nextRefreshAt` arrives or when some window crosses `resetsAt`. The daemon sends instants (`resetsAt`, `runoutAt`) and kinds (`noteKind`, `paceInlineKind`), never time phrases; live countdowns ("Resets in…", "Out in…") are formatted in QML by `Model.describeLine` + `service.nowMs`, identically in the panel, the bar tooltip and Copy Summary.
 7. **Python 3 stdlib only** — do not add external `pip` dependencies to `backend/` or to the `bin/omameter` CLI.
 8. **Token renewal only through the engine** — OAuth providers declare `OAUTH = OAuthRefresh(...)` and read via `authorized(...)` / `with_fresh_token(...)` from [`backend/providers/session.py`](backend/providers/session.py); `resets.py` uses `fresh_credential` + `send_with_retry`. Do not reimplement refresh, the 401 retry or the `is_hub_account` renewal check inside a provider. Client IDs and token URLs live in the provider module; [`backend/auth.py`](backend/auth.py) imports them.
+9. **Local token analytics is strictly opt-in & harness-direct** — `localTokenAnalytics` defaults to `false`; [`backend/analytics/parsers.py`](backend/analytics/parsers.py) reads only locally installed harnesses (Claude Code, GPT Codex, Antigravity, OpenCode) and must **never** read `~/.t3` or depend on external services. `set_local_enabled` returns immediately and `scan` streams `scan_progress` NDJSON events. On-demand LiteLLM pricing download uses `max_bytes=16 MiB` while keeping the `4 MiB` default safety cap for all other `HTTPClient` calls.
 
 ---
 
@@ -144,7 +159,7 @@ Translation boundary: snapshots, the cache and the `bin/omameter` CLI stay Engli
 Always run this full block before wrapping up any change:
 
 ```bash
-# 1. Python unit tests (about 195 tests)
+# 1. Python unit tests (about 222 tests)
 python3 -m unittest discover -s tests -v
 
 # 2. JS unit tests (Model.js + Navigation.js + Settings.js + Protocol.js)
@@ -154,7 +169,7 @@ node --test tests/*.mjs
 python3 scripts/check_i18n.py
 
 # 4. QML lint against the Omarchy modules
-/usr/bin/qmllint -I /usr/share/omarchy/shell OmameterService.qml OmameterWidget.qml ui/*.qml
+/usr/bin/qmllint -I /usr/share/omarchy/shell OmameterService.qml OmameterWidget.qml ui/*.qml analytics/*.qml
 
 # 5. Official Omarchy plugin validator
 omarchy plugin validate .

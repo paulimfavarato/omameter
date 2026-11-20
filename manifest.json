@@ -49,7 +49,8 @@
       "notifyReset": false,
       "privacyMode": false,
       "timeFormat": "auto",
-      "refreshIntervalSec": 300
+      "refreshIntervalSec": 300,
+      "localTokenAnalytics": false
     },
     "schema": [
       {
@@ -248,6 +249,13 @@
         "max": 3600,
         "step": 60,
         "defaultValue": 300
+      },
+      {
+        "key": "localTokenAnalytics",
+        "type": "boolean",
+        "label": "Local token analytics",
+        "description": "Opt-in local scanning of installed AI harness histories (Claude Code, GPT Codex, Antigravity, OpenCode) for token trends and API-equivalent cost estimates.",
+        "defaultValue": false
       }
     ]
   }
