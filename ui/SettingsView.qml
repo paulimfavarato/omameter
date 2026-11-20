@@ -997,6 +997,55 @@ Column {
 
     PanelSeparator { foreground: root.foreground }
 
+    // Analytics (Phase 1 Quota History + Phase 2 opt-in local token scanning)
+    Column {
+      width: parent.width
+      spacing: Style.space(6)
+
+      PanelSectionHeader {
+        text: root.t("settings.analytics", "Analytics")
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+      }
+
+      SettingToggleRow {
+        width: parent.width
+        label: root.t("settings.localTokenAnalytics", "Local Token & Cost Analytics")
+        wrapLabel: true
+        checked: !!root.s.localTokenAnalytics
+        foreground: root.foreground
+        accent: root.accent
+        fontFamily: root.fontFamily
+        onToggled: root.patchSetting({ localTokenAnalytics: !root.s.localTokenAnalytics })
+      }
+
+      PlainText {
+        width: parent.width
+        text: root.t("settings.localTokenAnalyticsHint", "Opt-in: incrementally scans local logs from Claude Code, GPT Codex, Antigravity and OpenCode into a local SQLite ledger. Quota history is always saved locally.")
+        color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.58)
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.WordWrap
+      }
+
+      Row {
+        anchors.right: parent.right
+        spacing: Style.space(6)
+
+        Button {
+          text: root.t("settings.openAnalytics", "Open Analytics")
+          bordered: true
+          foreground: root.foreground
+          accent: root.accent
+          fontFamily: root.fontFamily
+          fontSize: Style.font.bodySmall
+          onClicked: if (root.service) root.service.openAnalytics("", "", "")
+        }
+      }
+    }
+
+    PanelSeparator { foreground: root.foreground }
+
     // CLI hint box
     BorderSurface {
       width: parent.width

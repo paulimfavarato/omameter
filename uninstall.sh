@@ -37,10 +37,15 @@ if [[ -d "$TARGET_DIR" ]]; then
   rm -rf "$TARGET_DIR"
 fi
 
-# Only remove the CLI wrapper install.sh wrote (it execs the plugin's bin/omameter).
+# Only remove the CLI wrappers install.sh wrote.
 if [[ -f "$CLI_TARGET" ]] && grep -q "plugins/${PLUGIN_ID}/bin/omameter" "$CLI_TARGET" 2>/dev/null; then
   echo "==> Removing ${CLI_TARGET}..."
   rm -f "$CLI_TARGET"
+fi
+ANALYTICS_TARGET="${HOME}/.local/bin/omameter-analytics"
+if [[ -f "$ANALYTICS_TARGET" ]] && grep -q "plugins/${PLUGIN_ID}/bin/omameter-analytics" "$ANALYTICS_TARGET" 2>/dev/null; then
+  echo "==> Removing ${ANALYTICS_TARGET}..."
+  rm -f "$ANALYTICS_TARGET"
 fi
 
 if [[ "$PURGE" == "1" ]]; then

@@ -149,7 +149,12 @@ def main() -> int:
                 problems.append(f"i18n/{code}.json: {key} is empty")
 
     py_files = sorted((ROOT / "backend").rglob("*.py")) + [ROOT / "bin" / "omameter"]
-    js_files = sorted(ROOT.glob("*.qml")) + sorted((ROOT / "ui").glob("*.qml")) + sorted(ROOT.glob("*.js"))
+    js_files = (
+        sorted(ROOT.glob("*.qml"))
+        + sorted((ROOT / "ui").glob("*.qml"))
+        + sorted((ROOT / "analytics").glob("*.qml"))
+        + sorted(ROOT.glob("*.js"))
+    )
     used = set()
     for where, key, fallback in python_calls(py_files) + js_calls(js_files):
         if key.endswith("."):

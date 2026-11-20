@@ -29,7 +29,8 @@ var SCHEMA = [
   { key: "notifyReset", type: "boolean", defaultValue: false },
   { key: "privacyMode", type: "boolean", defaultValue: false },
   { key: "timeFormat", type: "enum", options: ["auto", "12h", "24h"], defaultValue: "auto" },
-  { key: "refreshIntervalSec", type: "integer", min: 60, max: 3600, step: 60, defaultValue: 300 }
+  { key: "refreshIntervalSec", type: "integer", min: 60, max: 3600, step: 60, defaultValue: 300 },
+  { key: "localTokenAnalytics", type: "boolean", defaultValue: false }
 ]
 
 var FIELDS = (function() {
