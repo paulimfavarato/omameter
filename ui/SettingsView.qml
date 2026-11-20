@@ -152,7 +152,7 @@ Column {
   readonly property int warningThreshold: s.warningThreshold
   readonly property int criticalThreshold: s.criticalThreshold
   readonly property int maxBarItems: s.maxBarItems
-  readonly property int maxBarItemsLimit: Settings.maxBarItemsCap(s.barLabelStyle)
+  readonly property int maxBarItemsLimit: Settings.maxBarItemsCap(s.barLabelStyle, s.barLayout)
   readonly property var maxBarItemsOptions: maxBarItemsLimit >= 8
     ? [0, 1, 2, 3, 4, 5, 6, 7, 8]
     : [0, 1, 2, 3, 4, 5]
@@ -285,6 +285,52 @@ Column {
       accent: root.accent
       fontFamily: root.fontFamily
       onChosen: function(v) { root.patchSetting({ barLabelStyle: v }) }
+    }
+
+    // Bar Progress Meter (Off / Bar / Blocks / Braille)
+    SettingChoiceRow {
+      width: parent.width
+      title: root.t("settings.barMeterStyle", "Top Bar Meter")
+      options: [
+        { value: "none",    label: root.t("settings.barMeterNone", "Off") },
+        { value: "bar",     label: root.t("settings.barMeterBar", "Bar") },
+        { value: "blocks",  label: root.t("settings.barMeterBlocks", "Blocks") },
+        { value: "braille", label: root.t("settings.barMeterBraille", "Braille") }
+      ]
+      value: root.s.barMeterStyle
+      foreground: root.foreground
+      background: root.background
+      accent: root.accent
+      fontFamily: root.fontFamily
+      onChosen: function(v) { root.patchSetting({ barMeterStyle: v }) }
+    }
+
+    // Bar Layout (Single Row / 2-Row Stacked)
+    SettingChoiceRow {
+      width: parent.width
+      title: root.t("settings.barLayout", "Top Bar Layout")
+      options: [
+        { value: "single",  label: root.t("settings.barLayoutSingle", "Single") },
+        { value: "stacked", label: root.t("settings.barLayoutStacked", "Stacked (2 rows)") }
+      ]
+      value: root.s.barLayout
+      foreground: root.foreground
+      background: root.background
+      accent: root.accent
+      fontFamily: root.fontFamily
+      onChosen: function(v) { root.patchSetting({ barLayout: v }) }
+    }
+
+    // Provider signature colors in the top bar
+    SettingToggleRow {
+      width: parent.width
+      label: root.t("settings.barProviderColors", "Provider Colors in Bar")
+      description: root.t("settings.barProviderColorsHint", "Tint top-bar icons and meters with each provider's signature color. Warning and critical alerts always override.")
+      checked: !!root.s.barProviderColors
+      foreground: root.foreground
+      accent: root.accent
+      fontFamily: root.fontFamily
+      onToggled: root.patchSetting({ barProviderColors: !root.s.barProviderColors })
     }
 
     // Always Show in Bar
@@ -858,6 +904,17 @@ Column {
         fontFamily: root.fontFamily
         onPriorityToggled: root.patchSetting({ useItOrLoseItPriority: !root.s.useItOrLoseItPriority })
         onNotifyToggled: root.patchSetting({ notifyUseItOrLoseIt: !root.s.notifyUseItOrLoseIt })
+      }
+
+      AlertMatrixRow {
+        width: parent.width
+        label: root.t("settings.quotaReset", "Quota Reset")
+        notifyOnly: true
+        notifyChecked: !!root.s.notifyReset
+        foreground: root.foreground
+        accent: root.accent
+        fontFamily: root.fontFamily
+        onNotifyToggled: root.patchSetting({ notifyReset: !root.s.notifyReset })
       }
     }
   }

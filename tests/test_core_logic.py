@@ -179,6 +179,52 @@ class TestPaceAndNotifications(unittest.TestCase):
         self.assertEqual(len(sent), 1)
         self.assertEqual(sent[0][0], "Critical")
 
+    def test_quota_reset_notification(self) -> None:
+        sent: list[tuple[str, str]] = []
+        ev = QuotaNotificationEvaluator(post_fn=lambda t, s, b, u: (sent.append((t, s)) or True))
+        lim = PriorityLimits(warning=30, critical=10)
+        enabled = {
+            "warning": False,
+            "critical": False,
+            "burningFast": False,
+            "useItOrLoseIt": False,
+            "reset": True,
+        }
+
+        # Prime at 85% used (warning) -> no notification on priming
+        ev.evaluate("acc.s", "Claude", make_pct_line("s", "Session", 85.0, resets_in_sec=3600), NOW, lim, enabled)
+        self.assertEqual(sent, [])
+
+        # Window rolls over 2 hours later, back to 0% used -> fires Quota Reset once
+        later = NOW + timedelta(hours=2)
+        ev.evaluate("acc.s", "Claude", make_pct_line("s", "Session", 0.0, resets_in_sec=7 * 3600), later, lim, enabled)
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0][0], "Quota Reset")
+
+        # Repeated clean polls in the new window do not re-fire
+        ev.evaluate("acc.s", "Claude", make_pct_line("s", "Session", 5.0, resets_in_sec=7 * 3600), later, lim, enabled)
+        self.assertEqual(len(sent), 1)
+
+        # Small drop (< 20%) without rollover does NOT fire
+        ev.evaluate("acc.s", "Claude", make_pct_line("s", "Session", 18.0, resets_in_sec=7 * 3600), later, lim, enabled)
+        ev.evaluate("acc.s", "Claude", make_pct_line("s", "Session", 5.0, resets_in_sec=7 * 3600), later, lim, enabled)
+        self.assertEqual(len(sent), 1)
+
+        # Re-arm once usage reaches >= 20%, then sharp drop without resets_at fires again
+        line_high = MetricLine(key="s", title="Session", line_type="progress", kind="percent", used=55.0, limit=100.0)
+        line_fresh = MetricLine(key="s", title="Session", line_type="progress", kind="percent", used=0.0, limit=100.0)
+        ev.evaluate("acc.s", "Claude", line_high, later, lim, enabled)
+        ev.evaluate("acc.s", "Claude", line_fresh, later, lim, enabled)
+        self.assertEqual(len(sent), 2)
+        self.assertEqual(sent[1][0], "Quota Reset")
+
+        # When disabled, never fires
+        ev2 = QuotaNotificationEvaluator(post_fn=lambda t, s, b, u: (sent.append((t, s)) or True))
+        disabled = dict(enabled, reset=False)
+        ev2.evaluate("acc.s", "Claude", line_high, NOW, lim, disabled)
+        ev2.evaluate("acc.s", "Claude", line_fresh, later, lim, disabled)
+        self.assertEqual(len(sent), 2)
+
 
 class TestPriorityBoardAndUnifiedAccounts(unittest.TestCase):
     def test_unified_pooling_and_anti_false_spent(self) -> None:

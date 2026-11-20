@@ -72,10 +72,10 @@ def _coerce(field: Mapping[str, Any], value: Any) -> Any:
 MAX_BAR_ITEMS_FULL = 5
 
 
-def max_bar_items_cap(bar_label_style: Any) -> int:
-    """Up to 5 items in Full style; up to schema max (8) in Compact or Icons styles."""
+def max_bar_items_cap(bar_label_style: Any, bar_layout: Any = "single") -> int:
+    """Up to 5 items in single-row Full style; up to schema max (8) in Compact, Icons, or Stacked."""
     schema_max = int(FIELDS["maxBarItems"]["max"])
-    if str(bar_label_style or "full") in ("compact", "icon"):
+    if str(bar_layout or "single") == "stacked" or str(bar_label_style or "full") in ("compact", "icon"):
         return schema_max
     return min(schema_max, MAX_BAR_ITEMS_FULL)
 
@@ -84,11 +84,11 @@ def normalize_settings(raw: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     """Every schema key, typed and bounded; missing or invalid values fall back to the default.
 
     Keys outside the schema are dropped. The two thresholds also keep their linked
-    gap (see PriorityLimits), and maxBarItems is capped at 5 when barLabelStyle is "full".
+    gap (see PriorityLimits), and maxBarItems is capped at 5 in single-row Full style.
     """
     src = raw if isinstance(raw, Mapping) else {}
     out = {key: _coerce(field, src[key]) if key in src else field["defaultValue"] for key, field in FIELDS.items()}
-    out["maxBarItems"] = min(out["maxBarItems"], max_bar_items_cap(out["barLabelStyle"]))
+    out["maxBarItems"] = min(out["maxBarItems"], max_bar_items_cap(out["barLabelStyle"], out["barLayout"]))
     lim = PriorityLimits(warning=out["warningThreshold"], critical=out["criticalThreshold"])
     out["warningThreshold"] = lim.warning
     out["criticalThreshold"] = lim.critical
