@@ -1,0 +1,212 @@
+{
+  "schemaVersion": 1,
+  "id": "paulimfavarato.omameter",
+  "name": "Omameter",
+  "version": "0.8.0",
+  "author": "Paulo Busato Favarato",
+  "license": "MIT",
+  "description": "Track the usage limits of your AI coding subscriptions (Claude, ChatGPT/Codex, Cursor, Amp, Antigravity, GitHub Copilot, Devin, Grok, Muse Code, Ollama, OpenCode, OpenRouter, Z.ai and CLIProxyAPI hubs) in the Omarchy top bar, with Priority ranking, pace marks, Burning Fast alerts, Unified Accounts, Rate-Limit Resets and the omameter CLI.",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "OmameterService.qml",
+    "barWidget": "OmameterWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Omameter",
+    "description": "The AI subscription limits closest to running out, right in the Omarchy top bar, with a Priority & All Usage panel, account sign-in manager, pace indicators, notifications and the omameter.limits.v2 CLI.",
+    "category": "AI",
+    "aliases": [
+      "omameter",
+      "ai",
+      "usage",
+      "quota"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "defaultTab": "priority",
+      "maxBarItems": 3,
+      "alwaysShowInBar": false,
+      "barLabelStyle": "full",
+      "displayMode": "remaining",
+      "resetDisplayMode": "relative",
+      "showPaceMarks": false,
+      "warningThreshold": 30,
+      "criticalThreshold": 10,
+      "burningFastPriority": true,
+      "useItOrLoseItPriority": true,
+      "notifyWarning": false,
+      "notifyCritical": false,
+      "notifyBurningFast": false,
+      "notifyUseItOrLoseIt": false,
+      "privacyMode": false,
+      "timeFormat": "auto",
+      "refreshIntervalSec": 300
+    },
+    "schema": [
+      {
+        "key": "defaultTab",
+        "type": "enum",
+        "label": "Default tab",
+        "description": "The tab the panel opens to when clicked from the top bar.",
+        "options": [
+          "priority",
+          "all"
+        ],
+        "defaultValue": "priority"
+      },
+      {
+        "key": "maxBarItems",
+        "type": "integer",
+        "label": "Max items in top bar",
+        "description": "0 shows the Omameter icon only; up to 5 in Full style or up to 8 in Compact and Icons styles, followed by a +N overflow count.",
+        "min": 0,
+        "max": 8,
+        "step": 1,
+        "defaultValue": 3
+      },
+      {
+        "key": "alwaysShowInBar",
+        "type": "boolean",
+        "label": "Always show in top bar",
+        "description": "Show all Priority items (including Use It or Lose It and Used Up) in the top bar; when off, pinned items and urgent limits appear.",
+        "defaultValue": false
+      },
+      {
+        "key": "barLabelStyle",
+        "type": "enum",
+        "label": "Top bar label style",
+        "description": "Show full metric labels, compact window tags (5h, 7d), or icons only with window glyphs differentiating 5h, session, and weekly limits.",
+        "options": [
+          "full",
+          "compact",
+          "icon"
+        ],
+        "defaultValue": "full"
+      },
+      {
+        "key": "displayMode",
+        "type": "enum",
+        "label": "Show usage as",
+        "description": "Display percentages and amounts as remaining (left) or used.",
+        "options": [
+          "remaining",
+          "used"
+        ],
+        "defaultValue": "remaining"
+      },
+      {
+        "key": "resetDisplayMode",
+        "type": "enum",
+        "label": "Reset times",
+        "description": "Show reset times as a relative countdown or exact timestamp.",
+        "options": [
+          "relative",
+          "absolute"
+        ],
+        "defaultValue": "relative"
+      },
+      {
+        "key": "showPaceMarks",
+        "type": "boolean",
+        "label": "Pace marks",
+        "description": "Draw a tick on each bar and Priority ring marking where an even pace through the window would be.",
+        "defaultValue": false
+      },
+      {
+        "key": "warningThreshold",
+        "type": "integer",
+        "label": "Warning threshold (% left)",
+        "description": "Limits at or below this percent remaining turn orange and enter Running Out.",
+        "min": 20,
+        "max": 70,
+        "step": 5,
+        "defaultValue": 30
+      },
+      {
+        "key": "criticalThreshold",
+        "type": "integer",
+        "label": "Critical threshold (% left)",
+        "description": "Limits at or below this percent remaining turn red.",
+        "min": 5,
+        "max": 25,
+        "step": 5,
+        "defaultValue": 10
+      },
+      {
+        "key": "burningFastPriority",
+        "type": "boolean",
+        "label": "Burning Fast in Priority",
+        "description": "List limits projected to run out before their reset at current pace.",
+        "defaultValue": true
+      },
+      {
+        "key": "useItOrLoseItPriority",
+        "type": "boolean",
+        "label": "Use It or Lose It in Priority",
+        "description": "List multi-day limits resetting within 24 hours with more than 50% left.",
+        "defaultValue": true
+      },
+      {
+        "key": "notifyWarning",
+        "type": "boolean",
+        "label": "Notify on Warning",
+        "description": "Send a desktop notification when a limit reaches the Warning threshold.",
+        "defaultValue": false
+      },
+      {
+        "key": "notifyCritical",
+        "type": "boolean",
+        "label": "Notify on Critical",
+        "description": "Send a desktop notification when a limit reaches the Critical threshold.",
+        "defaultValue": false
+      },
+      {
+        "key": "notifyBurningFast",
+        "type": "boolean",
+        "label": "Notify on Burning Fast",
+        "description": "Send a desktop notification when current pace will exhaust a limit before reset.",
+        "defaultValue": false
+      },
+      {
+        "key": "notifyUseItOrLoseIt",
+        "type": "boolean",
+        "label": "Notify on Use It or Lose It",
+        "description": "Send a desktop notification when a multi-day limit resets within 24h with over 50% left.",
+        "defaultValue": false
+      },
+      {
+        "key": "privacyMode",
+        "type": "boolean",
+        "label": "Privacy mode",
+        "description": "Show app icon only in the top bar and obscure account names in the panel.",
+        "defaultValue": false
+      },
+      {
+        "key": "timeFormat",
+        "type": "enum",
+        "label": "Time format",
+        "options": [
+          "auto",
+          "12h",
+          "24h"
+        ],
+        "defaultValue": "auto"
+      },
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "description": "Background refresh cadence in seconds (default 300s / 5 minutes).",
+        "min": 60,
+        "max": 3600,
+        "step": 60,
+        "defaultValue": 300
+      }
+    ]
+  }
+}

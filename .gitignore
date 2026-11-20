@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.venv/
+venv/
+env/
+*.egg-info/
+build/
+dist/
+
+# Node (tests use only node:test, but keep stray installs out)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Qt / QML tooling
+*.qmlc
+*.jsc
+.qmlls.ini
+*.qmltypes.user
+*.pro.user*
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.code-workspace
+*.sublime-*
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files, logs and backups
+*.tmp
+*.temp
+*.log
+*.bak
+*.orig
+*.rej
+tmp/
+
+# Local tooling and agent caches
+.codegraph/
+.claude/
+.ai-memory/
+.env
+.env.*
+
+# Never commit local data or secrets (Omameter keeps them outside the repo,
+# but guard against accidental copies)
+vault.json
+accounts.json
+snapshots.json
+proxy.json
+layout.json

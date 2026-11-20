@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""Omameter CLI — prints cached AI subscription limits as omameter.limits.v2 JSON.
+
+Behavior:
+- Never refreshes, signs in, or opens the credential vault.
+- Accepts optional provider kind (claude, codex, cursor, amp, antigravity, copilot,
+  devin, grok, muse, ollama, opencode, openrouter, zai) or account card id (e.g. codex@1a2b3c4d).
+- Exit codes:
+  0: printed
+  2: invalid arguments, or provider/account argument that matches no configured account
+  4: nothing fetched yet for the named accounts (empty envelope still prints)
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+if str(PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_ROOT))
+
+from backend.limits_envelope import account_matches_filter, build_limits_envelope, encode_limits_envelope_json
+from backend.models import PROVIDER_CATALOG, utc_now
+from backend.store import OmameterStore
+
+
+def usage_text() -> str:
+    kinds = ", ".join(PROVIDER_CATALOG.keys())
+    return (
+        "Usage: omameter [provider|account-id]\n\n"
+        "Prints the usage last fetched by Omameter as JSON (schema: omameter.limits.v2).\n"
+        f"Providers: {kinds}\n"
+    )
+
+
+def main(argv: list[str]) -> int:
+    args = list(argv)
+    if "--help" in args or "-h" in args:
+        sys.stdout.write(usage_text())
+        return 0
+
+    if "--force" in args:
+        sys.stderr.write("omameter: --force has no effect; use the panel to refresh.\n")
+        args = [a for a in args if a != "--force"]
+
+    if len(args) > 1 or (len(args) == 1 and args[0].startswith("-")):
+        sys.stderr.write(usage_text())
+        return 2
+
+    filter_arg = args[0].strip() if args else None
+    store = OmameterStore()
+
+    if filter_arg is not None:
+        is_known_kind = filter_arg in PROVIDER_CATALOG
+        matched_accounts = [a for a in store.accounts if account_matches_filter(a, filter_arg)]
+        if not is_known_kind and not matched_accounts:
+            sys.stderr.write(f"omameter: unknown provider or account '{filter_arg}'.\n")
+            return 2
+        if not matched_accounts:
+            sys.stderr.write(f"omameter: no configured account for '{filter_arg}'.\n")
+            return 2
+
+    envelope = build_limits_envelope(
+        store.accounts,
+        store.snapshots,
+        now=utc_now(),
+        filter_arg=filter_arg,
+    )
+    sys.stdout.write(encode_limits_envelope_json(envelope) + "\n")
+
+    if not envelope["providers"]:
+        return 4
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

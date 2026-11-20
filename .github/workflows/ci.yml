@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Unit tests (stdlib only, no dependencies)
+        run: python -m unittest discover -s tests -v
+      - name: CLI smoke test
+        run: python bin/omameter --help
+
+  javascript:
+    name: Node tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Model.js, Navigation.js, Settings.js and Protocol.js tests
+        run: node --test tests/*.mjs
+
+  i18n-and-json:
+    name: i18n parity and JSON
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Validate manifest.json and fixtures
+        run: |
+          python -m json.tool manifest.json > /dev/null
+          for f in tests/fixtures/*.json; do python -m json.tool "$f" > /dev/null; done
+      - name: Check en.json / pt-BR.json parity and key usage
+        run: python scripts/check_i18n.py
+      - name: Shell scripts parse
+        run: |
+          bash -n install.sh
+          bash -n uninstall.sh
