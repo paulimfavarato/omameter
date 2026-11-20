@@ -4,13 +4,11 @@
 
 Omameter is a native [Omarchy](https://omarchy.org) shell plugin (`service` + `bar-widget`, built on Quickshell) that tracks the usage limits of your AI coding subscriptions — Claude, ChatGPT/Codex, Cursor, GitHub Copilot and more — and shows the ones closest to running out right in the top bar. It follows the active Omarchy theme, fonts, animation settings and language, and its backend is a small Python 3 daemon with **no dependencies beyond the standard library**.
 
-> **Screenshots**
->
-> _Coming soon._ <!-- Add images to docs/screenshots/ and reference them here, e.g.:
-> ![Top bar](docs/screenshots/top-bar.png)
-> ![Priority tab](docs/screenshots/priority.png)
-> ![All Usage tab](docs/screenshots/all-usage.png)
-> ![Accounts](docs/screenshots/accounts.png) -->
+## Screenshots
+
+| Priority | All Usage | Settings |
+|---|---|---|
+| ![Priority tab with pinned limits](docs/screenshots/priority.png) | ![All Usage tab with the top bar strip](docs/screenshots/all-usage.png) | ![Settings, General tab](docs/screenshots/settings.png) |
 
 ---
 
