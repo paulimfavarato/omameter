@@ -22,8 +22,9 @@ from backend.analytics.parsers import (
     scan_codex_file,
     scan_opencode_db,
     scan_opencode_legacy_json,
+    t3_antigravity_available,
 )
-from backend.analytics.pricing import PricingEngine, load_analytics_config
+from backend.analytics.pricing import PricingEngine, load_analytics_config, normalize_analytics_config
 from backend.analytics.service import AnalyticsService
 from backend.models import Account, MetricLine, MetricPeriod, ProviderSnapshot
 from backend.store import OmameterStore
@@ -518,17 +519,102 @@ class TestLocalHarnessParsers(unittest.TestCase):
             self.assertEqual(ev.reasoning_tokens, 300)
             self.assertEqual(ev.project, "/home/dev/work/omameter")
 
-    def test_never_reads_t3_directories(self) -> None:
+    def test_never_reads_t3_directories_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             fake_home = Path(tmp) / "fake_user_home"
             fake_home.mkdir()
-            # Even if ~/.t3 exists on disk, discover_harness_roots must NEVER include it
-            (fake_home / ".t3" / "userdata" / "providers").mkdir(parents=True)
+            # Even if ~/.t3 exists on disk, the default discovery must NEVER include it
+            (fake_home / ".t3" / "userdata" / "providers" / "antigravity" / "abc").mkdir(parents=True)
             roots = discover_harness_roots(home=fake_home, env={})
             for harness, paths in roots.items():
                 for p in paths:
                     rel = str(p.relative_to(fake_home))
                     self.assertNotIn(".t3", rel, f"Harness {harness} must never depend on ~/.t3: {rel}")
+
+    def test_antigravity_acp_dir_is_a_default_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_home = Path(tmp)
+            roots = discover_harness_roots(home=fake_home, env={})
+            self.assertIn(fake_home / ".gemini" / "antigravity-acp" / "conversations", roots["antigravity"])
+
+    def test_t3_antigravity_opt_in_adds_only_instance_conversation_dirs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_home = Path(tmp)
+            self.assertFalse(t3_antigravity_available(fake_home))
+            base = fake_home / ".t3" / "userdata" / "providers" / "antigravity"
+            for inst in ("aaa", "bbb"):
+                (base / inst / "antigravity-acp" / "conversations").mkdir(parents=True)
+            (base / "stray.txt").write_text("x", encoding="utf-8")
+            (fake_home / ".t3" / "userdata" / "providers" / "codex").mkdir(parents=True)
+            self.assertTrue(t3_antigravity_available(fake_home))
+
+            roots = discover_harness_roots(home=fake_home, env={}, include_t3_antigravity=True)
+            t3_roots = [p for p in roots["antigravity"] if ".t3" in str(p)]
+            self.assertEqual(
+                t3_roots,
+                [base / inst / "antigravity-acp" / "conversations" for inst in ("aaa", "bbb")],
+            )
+            for harness in ("claude", "codex", "opencode"):
+                self.assertFalse(any(".t3" in str(p) for p in roots[harness]))
+
+    def test_include_t3_antigravity_config_is_a_strict_bool(self) -> None:
+        self.assertFalse(normalize_analytics_config({})["includeT3Antigravity"])
+        self.assertFalse(normalize_analytics_config({"includeT3Antigravity": "yes"})["includeT3Antigravity"])
+        self.assertTrue(normalize_analytics_config({"includeT3Antigravity": True})["includeT3Antigravity"])
+
+    def test_t3_antigravity_opt_in_scans_and_opt_out_forgets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fake_home = base / "home"
+            cfg_dir = base / "cfg"
+            cache_dir = base / "cache"
+            now_ts = int(datetime.now(timezone.utc).timestamp())
+            conv = fake_home / ".t3" / "userdata" / "providers" / "antigravity" / "inst1" / "antigravity-acp" / "conversations"
+            conv.mkdir(parents=True)
+            _build_antigravity_db(conv / "c1.db", ts=now_ts - 600, model="gemini-4-neon", request_id="req-t3")
+            acp = fake_home / ".gemini" / "antigravity-acp" / "conversations"
+            acp.mkdir(parents=True)
+            _build_antigravity_db(acp / "c2.db", ts=now_ts - 600, model="gemini-3-pro", request_id="req-acp")
+
+            store = OmameterStore(config_dir=cfg_dir, cache_dir=cache_dir)
+            store.save_settings()
+            svc = AnalyticsService(
+                db_path=base / "analytics.db",
+                config_path=base / "analytics.json",
+                omameter_config_dir=cfg_dir,
+                omameter_cache_dir=cache_dir,
+                litellm_cache_path=base / "litellm.json",
+                home=fake_home,
+                env={},
+            )
+            svc.set_local_analytics_enabled(True)
+
+            def models() -> set:
+                rep = svc.build_report(period="today", now_ts=now_ts)
+                return {m["model"] for m in rep["models"]}
+
+            def ag_row() -> dict:
+                rep = svc.build_report(period="today", now_ts=now_ts)
+                return {p["id"]: p for p in rep["providers"]}["antigravity"]
+
+            svc.scan_local_harnesses()
+            self.assertEqual(models(), {"gemini-3-pro"})
+            self.assertTrue(ag_row()["t3Available"])
+            self.assertFalse(ag_row()["t3Enabled"])
+
+            resp = _handle_command(svc, {"id": 1, "cmd": "update_config", "patch": {"includeT3Antigravity": True}})
+            self.assertTrue(resp["ok"])
+            self.assertTrue(resp["config"]["includeT3Antigravity"])
+            svc.scan_local_harnesses()
+            self.assertEqual(models(), {"gemini-3-pro", "gemini-4-neon"})
+            self.assertTrue(ag_row()["t3Enabled"])
+
+            svc.update_config({"includeT3Antigravity": False})
+            self.assertEqual(models(), {"gemini-3-pro"})
+            self.assertEqual(
+                [k for k in svc.db.get_all_scan_files() if ".t3" in k],
+                [],
+            )
 
 
 class TestAnalyticsServiceAndCli(unittest.TestCase):

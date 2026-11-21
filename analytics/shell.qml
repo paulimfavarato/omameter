@@ -205,6 +205,7 @@ ShellRoot {
   property bool scanning: false
   property bool enablingLocal: false
   property bool _initialScanDone: false
+  property bool _t3ScanPending: false
   property string scanPhase: ""
   property string scanProviderName: ""
   property int scanProcessedFiles: 0
@@ -387,6 +388,11 @@ ShellRoot {
     sendCmd({ cmd: "update_config", patch: patch })
   }
 
+  function setT3Antigravity(enabled) {
+    _t3ScanPending = !!enabled
+    sendCmd({ cmd: "update_config", patch: { includeT3Antigravity: !!enabled } })
+  }
+
   function setRetentionDays(days) {
     sendCmd({ cmd: "update_config", patch: { retentionDays: Number(days) } })
   }
@@ -508,6 +514,13 @@ ShellRoot {
       }
     } else if (cmd === "update_config" || cmd === "set_model_price" || cmd === "set_model_alias" || cmd === "set_plan_price") {
       _showStatus(t("analytics.savedToast", "Analytics settings updated."), false)
+      if (cmd === "update_config" && _t3ScanPending) {
+        _t3ScanPending = false
+        if (localEnabled && !scanning) {
+          startScan(false)
+          return
+        }
+      }
       fetchReport("none")
     } else if (cmd === "refresh_pricing") {
       pricingRefreshing = false
@@ -2335,6 +2348,7 @@ ShellRoot {
                         Row {
                           anchors.left: parent.left
                           anchors.verticalCenter: parent.verticalCenter
+                          width: Math.max(0, parent.width - srcActions.width - 12)
                           spacing: 8
 
                           Rectangle {
@@ -2347,6 +2361,7 @@ ShellRoot {
 
                           Column {
                             anchors.verticalCenter: parent.verticalCenter
+                            width: Math.max(0, parent.width - 16)
                             spacing: 1
 
                             PlainText {
@@ -2358,9 +2373,16 @@ ShellRoot {
                             }
 
                             PlainText {
-                              text: modelData.installed
-                                ? appRoot.t("analytics.harnessInstalled", "Detected · %1 files · %2 events").arg(Number(modelData.fileCount || 0)).arg(Number(modelData.requests || 0))
-                                : appRoot.t("analytics.harnessNotFound", "Not installed on this machine")
+                              width: parent.width
+                              elide: Text.ElideRight
+                              text: {
+                                var base = modelData.installed
+                                  ? appRoot.t("analytics.harnessInstalled", "Detected · %1 files · %2 events").arg(Number(modelData.fileCount || 0)).arg(Number(modelData.requests || 0))
+                                  : appRoot.t("analytics.harnessNotFound", "Not installed on this machine")
+                                if (modelData.t3Available && !modelData.t3Enabled)
+                                  return base + " · " + appRoot.t("analytics.t3AntigravityFound", "T3 Code sessions found")
+                                return base
+                              }
                               color: appRoot.fgMuted
                               font.family: appRoot.fontFamily
                               font.pixelSize: 10
@@ -2369,6 +2391,7 @@ ShellRoot {
                         }
 
                         Row {
+                          id: srcActions
                           anchors.right: parent.right
                           anchors.verticalCenter: parent.verticalCenter
                           spacing: 8
@@ -2408,6 +2431,19 @@ ShellRoot {
                             padX: 8
                             padY: 4
                             onClicked: appRoot.savePlanPrice(modelData.id, planInput.text)
+                          }
+
+                          ChipButton {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: !!(modelData.t3Available || modelData.t3Enabled)
+                            text: modelData.t3Enabled
+                              ? appRoot.t("analytics.t3AntigravityOn", "T3 Code: ON")
+                              : appRoot.t("analytics.t3AntigravityOff", "T3 Code: OFF")
+                            selected: !!modelData.t3Enabled
+                            fontSize: 10
+                            padX: 8
+                            padY: 4
+                            onClicked: appRoot.setT3Antigravity(!modelData.t3Enabled)
                           }
 
                           ChipButton {

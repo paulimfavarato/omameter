@@ -16,6 +16,8 @@ from backend.analytics.parsers import (
     discover_harness_roots,
     enumerate_harness_files,
     inspect_harness_coverage,
+    t3_antigravity_available,
+    t3_antigravity_base,
     scan_antigravity_db,
     scan_claude_file,
     scan_codex_file,
@@ -221,7 +223,13 @@ class AnalyticsService:
                 current[key] = merged
         if "retentionDays" in patch:
             current["retentionDays"] = patch["retentionDays"]
+        was_t3 = bool(current.get("includeT3Antigravity"))
+        if "includeT3Antigravity" in patch:
+            current["includeT3Antigravity"] = patch["includeT3Antigravity"]
         self.config = save_analytics_config(current, self.config_path)
+        if was_t3 and not self.config.get("includeT3Antigravity"):
+            # Opting out also forgets what was imported from ~/.t3.
+            self.db.forget_source_tree(str(t3_antigravity_base(self.home)))
         self.pricing.update_config(self.config)
         retention = int(self.config.get("retentionDays") or 0)
         if retention > 0:
@@ -339,6 +347,7 @@ class AnalyticsService:
             self.config.get("customPaths"),
             home=self.home,
             env=self.env,
+            include_t3_antigravity=bool(self.config.get("includeT3Antigravity")),
         )
         cached_files = {} if force else self.db.get_all_scan_files()
 
@@ -1025,11 +1034,14 @@ class AnalyticsService:
         cache_hit_rate = round((total_cr / prompt_denom) * 100.0, 1) if prompt_denom > 0 else 0.0
 
         # Coverage & provider list
+        include_t3 = bool(self.config.get("includeT3Antigravity"))
         coverage = inspect_harness_coverage(
             self.config.get("customPaths"),
             home=self.home,
             env=self.env,
+            include_t3_antigravity=include_t3,
         )
+        t3_available = t3_antigravity_available(self.home)
         plan_prices = self.config.get("planMonthlyPrices") or {}
         providers_out: List[Dict[str, Any]] = []
         plan_total_usd = 0.0
@@ -1061,6 +1073,8 @@ class AnalyticsService:
                     "installed": bool(cov.get("installed")),
                     "fileCount": int(cov.get("fileCount") or 0),
                     "enabled": bool(enabled_map.get(p, True)),
+                    "t3Available": p == "antigravity" and t3_available,
+                    "t3Enabled": p == "antigravity" and include_t3,
                 }
             )
 
