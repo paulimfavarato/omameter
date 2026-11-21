@@ -13,7 +13,7 @@ from pathlib import Path
 from backend import i18n
 from backend.daemon import OmameterDaemon
 from backend.http_client import ProxyConfig
-from backend.models import MetricLine, ResetItem, title_names_window
+from backend.models import MetricLine, MetricValue, ResetItem, format_currency, title_names_window
 from backend.pace import QuotaNotificationEvaluator, milestone_title_and_body
 from backend.priority import _reset_item_view, format_line_amount
 from backend.settings import PriorityLimits
@@ -85,6 +85,14 @@ class DashboardEdgeTests(LanguageTestCase):
         self.assertEqual(item.title, "Full Reset", "the snapshot itself stays English")
         title, _ = milestone_title_and_body("critical", PriorityLimits.from_settings({}))
         self.assertEqual(title, "Crítico")
+
+    def test_balance_shows_the_bare_amount_in_the_top_bar(self) -> None:
+        line = MetricLine(key="balance", title="Balance", line_type="values", kind="dollars",
+                          values=[MetricValue(number=11.3, kind="dollars", label="left", currency_code="USD")])
+        self.assertEqual(format_line_amount(line), "$11.30 left")
+        self.assertEqual(format_line_amount(line, style="tray"), "$11.30")
+        tray = [format_currency(v, "USD", style="tray") for v in (0.5, 99.994, 99.999, 123.45, 999.96, 1500)]
+        self.assertEqual(tray, ["$0.50", "$99.99", "$100.0", "$123.5", "$1K", "$1.5K"])
 
     def test_title_names_window_uses_the_english_title(self) -> None:
         self.assertTrue(title_names_window("Weekly", "7d"))

@@ -851,9 +851,13 @@ def format_currency(val: float, code: Optional[str] = "USD", *, style: str = "ro
     if av >= 1000:
         return f"{sign}{sym}{format_compact_number(av)}"
     if style == "tray":
-        if 0 < av < 1:
+        # Keep cents visible in the top bar: $11.30, $123.4 (a balance of $11
+        # and $11.95 are not the same thing).
+        if round(av, 2) < 100:
             return f"{sign}{sym}{av:.2f}"
-        return f"{sign}{sym}{int(round(av))}"
+        if round(av, 1) < 1000:
+            return f"{sign}{sym}{av:.1f}"
+        return f"{sign}{sym}{format_compact_number(1000.0)}"
     cents = int(round(av * 100))
     if cents % 100 == 0:
         return f"{sign}{sym}{cents // 100}"

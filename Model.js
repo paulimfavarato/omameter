@@ -486,7 +486,7 @@ function windowGlyph(windowKind) {
 
 // Compute what a top-bar chip renders next to the provider icon:
 //   "full"    -> { label: shortTitle, glyph: "" }
-//   "compact" -> { label: windowTag || shortTitle, glyph: "" }
+//   "compact" -> { label: windowTag || shortTitle, glyph: "" } ("" for a "$" tag)
 //   "icon"    -> { label: "", glyph: windowGlyph(windowKind) }
 function barChipDisplay(item, barLabelStyle) {
   var it = item || {}
@@ -497,6 +497,8 @@ function barChipDisplay(item, barLabelStyle) {
     return { label: "", glyph: windowGlyph(it.windowKind) }
   }
   if (style === "compact") {
+    // A "$" tag only says "money", which the value ("$11.30") already shows.
+    if (tag === "$") return { label: "", glyph: "" }
     return { label: tag || shortTitle, glyph: "" }
   }
   return { label: shortTitle, glyph: "" }
