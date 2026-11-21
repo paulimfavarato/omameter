@@ -141,14 +141,45 @@ def _expand_dirs(paths: Sequence[str]) -> List[Path]:
 
 
 # ---------------------------------------------------------------------------
-# Harness directory discovery (installed local harnesses only, NO T3 Code)
+# Harness directory discovery (installed local harnesses; T3 Code only on opt-in)
 # ---------------------------------------------------------------------------
+
+# T3 Code runs Antigravity with an isolated data dir per provider instance:
+# ~/.t3/userdata/providers/antigravity/<instance>/antigravity-acp/conversations/*.db
+# This is the ONLY part of ~/.t3 analytics may touch, and only when the user turns on
+# `includeT3Antigravity`. Without the opt-in, nothing under ~/.t3 is listed or read.
+T3_ANTIGRAVITY_SUBPATH = (".t3", "userdata", "providers", "antigravity")
+
+
+def t3_antigravity_base(home: Optional[Path] = None) -> Path:
+    h = home if home is not None else Path.home()
+    return h.joinpath(*T3_ANTIGRAVITY_SUBPATH)
+
+
+def t3_antigravity_available(home: Optional[Path] = None) -> bool:
+    """Existence check only (no listing, no reads) used to offer the opt-in."""
+    try:
+        return t3_antigravity_base(home).is_dir()
+    except OSError:
+        return False
+
+
+def t3_antigravity_roots(home: Optional[Path] = None) -> List[Path]:
+    """Conversation dirs of every T3 Code Antigravity instance (call only after opt-in)."""
+    base = t3_antigravity_base(home)
+    try:
+        instances = sorted(d for d in base.iterdir() if d.is_dir() and not d.is_symlink())
+    except OSError:
+        return []
+    return [d / "antigravity-acp" / "conversations" for d in instances]
+
 
 def discover_harness_roots(
     custom_paths: Optional[Dict[str, List[str]]] = None,
     *,
     home: Optional[Path] = None,
     env: Optional[Dict[str, str]] = None,
+    include_t3_antigravity: bool = False,
 ) -> Dict[str, List[Path]]:
     """Return candidate directories/files for each priority harness."""
     h = home if home is not None else Path.home()
@@ -203,15 +234,18 @@ def discover_harness_roots(
     opencode_roots.append(xdg_data / "opencode")
     opencode_roots.extend(_expand_dirs(custom.get("opencode") or []))
 
-    # 4. Antigravity (CLI + desktop standard local paths, never T3 directories)
+    # 4. Antigravity (CLI, desktop and ACP standard local paths; T3 Code only on opt-in)
     ag_roots: List[Path] = []
     if e.get("ANTIGRAVITY_DATA_DIR"):
         for base in _expand_dirs([e["ANTIGRAVITY_DATA_DIR"]]):
             ag_roots.append(base / "conversations" if (base / "conversations").is_dir() else base)
     ag_roots.append(h / ".gemini" / "antigravity-cli" / "conversations")
     ag_roots.append(h / ".gemini" / "antigravity" / "conversations")
+    ag_roots.append(h / ".gemini" / "antigravity-acp" / "conversations")
     for p in _expand_dirs(custom.get("antigravity") or []):
         ag_roots.append(p / "conversations" if (p / "conversations").is_dir() else p)
+    if include_t3_antigravity:
+        ag_roots.extend(t3_antigravity_roots(h))
 
     return {
         "claude": _dedupe(claude_roots),
@@ -1186,9 +1220,12 @@ def inspect_harness_coverage(
     *,
     home: Optional[Path] = None,
     env: Optional[Dict[str, str]] = None,
+    include_t3_antigravity: bool = False,
 ) -> Dict[str, Dict[str, Any]]:
     """Report which local harness directories exist on this machine (metadata only)."""
-    roots = discover_harness_roots(custom_paths, home=home, env=env)
+    roots = discover_harness_roots(
+        custom_paths, home=home, env=env, include_t3_antigravity=include_t3_antigravity
+    )
     out: Dict[str, Dict[str, Any]] = {}
     for prov in HARNESS_ORDER:
         existing = [str(p) for p in roots[prov] if p.exists()]

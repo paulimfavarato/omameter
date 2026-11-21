@@ -515,6 +515,27 @@ class AnalyticsDB:
         finally:
             conn.close()
 
+    def forget_source_tree(self, root: str) -> int:
+        """Drop token events and scan state recorded from files under `root`."""
+        base = str(root).rstrip("/")
+        if not base:
+            return 0
+        prefix = base + "/"
+        conn = self._connect()
+        try:
+            with conn:
+                removed = conn.execute(
+                    "DELETE FROM token_events WHERE source_dir = ? OR substr(source_dir, 1, ?) = ?",
+                    (base, len(prefix), prefix),
+                ).rowcount
+                conn.execute(
+                    "DELETE FROM scan_files WHERE substr(path, 1, ?) = ?",
+                    (len(prefix), prefix),
+                )
+            return int(removed or 0)
+        finally:
+            conn.close()
+
     def clear_token_history(self) -> None:
         conn = self._connect()
         try:

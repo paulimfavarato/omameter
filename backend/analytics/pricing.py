@@ -56,6 +56,8 @@ DEFAULT_ANALYTICS_CONFIG: Dict[str, Any] = {
     "modelAliases": {},
     "planMonthlyPrices": {},
     "retentionDays": 92,
+    # Opt-in: also scan Antigravity sessions that T3 Code keeps under ~/.t3.
+    "includeT3Antigravity": False,
 }
 
 
@@ -204,6 +206,9 @@ def normalize_analytics_config(raw: Any) -> Dict[str, Any]:
             if val is not None and val > 0:
                 clean_plans[prov.strip().lower()] = round(val, 2)
         out["planMonthlyPrices"] = clean_plans
+
+    if isinstance(src.get("includeT3Antigravity"), bool):
+        out["includeT3Antigravity"] = src["includeT3Antigravity"]
 
     ret = src.get("retentionDays")
     if isinstance(ret, int) and not isinstance(ret, bool) and ret in (0, 30, 90, 92, 180, 365):
