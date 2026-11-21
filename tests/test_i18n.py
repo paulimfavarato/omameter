@@ -16,6 +16,7 @@ from backend.http_client import ProxyConfig
 from backend.models import MetricLine, MetricValue, ResetItem, format_currency, title_names_window
 from backend.pace import QuotaNotificationEvaluator, milestone_title_and_body
 from backend.priority import _reset_item_view, format_line_amount
+from backend.resets import _format_outcome
 from backend.settings import PriorityLimits
 from backend.store import OmameterStore
 from backend.vault import CredentialVault
@@ -36,6 +37,29 @@ class CatalogCheckTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()), redirect_stderr(err):
             code = check_i18n.main()
         self.assertEqual(code, 0, err.getvalue())
+
+
+class ResetCooldownMessageTests(LanguageTestCase):
+    """The cooldown toast branches on the remaining time, not on translated text."""
+
+    def _message(self, seconds: int) -> str:
+        until = datetime.fromtimestamp(NOW.timestamp() + seconds, tz=timezone.utc)
+        return _format_outcome("unavailable_now", now=NOW, cooldown_until=until)["message"]
+
+    def test_english_soon_and_duration(self) -> None:
+        i18n.set_language("en")
+        self.assertEqual(self._message(300), "Resets can't be used right now. Try again soon.")
+        self.assertEqual(self._message(301), "Resets can't be used right now. Try again in 6m.")
+
+    def test_portuguese_soon_is_not_doubled(self) -> None:
+        i18n.set_language("pt-BR")
+        self.assertEqual(self._message(300), "Os resets não podem ser usados agora. Tente novamente em breve.")
+        self.assertEqual(self._message(301), "Os resets não podem ser usados agora. Tente novamente em 6m.")
+
+    def test_no_cooldown_keeps_the_plain_message(self) -> None:
+        i18n.set_language("en")
+        message = _format_outcome("unavailable_now", now=NOW)["message"]
+        self.assertEqual(message, "Resets can't be used right now.")
 
 
 class TranslateTests(LanguageTestCase):

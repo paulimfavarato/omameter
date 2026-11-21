@@ -25,8 +25,8 @@ from backend.analytics.parsers import (
     t3_antigravity_available,
 )
 from backend.analytics.pricing import PricingEngine, load_analytics_config, normalize_analytics_config
-from backend.analytics.service import AnalyticsService
-from backend.models import Account, MetricLine, MetricPeriod, ProviderSnapshot
+from backend.analytics.service import AnalyticsService, _line_window_kind
+from backend.models import Account, MetricLine, MetricPeriod, MetricValue, ProviderSnapshot, metric_window_info
 from backend.store import OmameterStore
 
 
@@ -760,6 +760,96 @@ class TestAnalyticsServiceAndCli(unittest.TestCase):
             rep_sr = svc.build_report(period=reset_id, provider="claude", now_ts=now_ts)
             self.assertEqual(rep_sr["summary"]["requests"], 1)
             self.assertEqual(rep_sr["summary"]["inputTokens"], 100_000)
+
+
+
+class TestQuotaWindowsAndSpend(unittest.TestCase):
+    """Quota history uses the dashboard's window rules and never treats a balance as spend."""
+
+    def test_window_kind_matches_the_dashboard_classifier(self) -> None:
+        day_ms = MetricPeriod.DAY_MS
+        cases = [
+            # (line, expected history kind)
+            (MetricLine(line_type="progress", key="quota", title="Quota", period_duration_ms=14 * day_ms), "weekly"),
+            (MetricLine(line_type="progress", key="limit", title="Weekly day limit"), "weekly"),
+            (MetricLine(line_type="progress", key="usage", title="Usage", period_duration_ms=8 * 3_600_000), "session"),
+            (MetricLine(line_type="progress", key="five", title="5h Limit"), "session"),
+            (MetricLine(line_type="progress", key="m", title="Monthly", period_duration_ms=30 * day_ms), "monthly"),
+            (MetricLine(line_type="progress", key="credits", title="Credits", kind="dollars"), "extra"),
+        ]
+        for line, expected in cases:
+            with self.subTest(title=line.title):
+                self.assertEqual(_line_window_kind(line), expected)
+                dashboard_kind = metric_window_info(line)[0]
+                self.assertEqual("session" if dashboard_kind == "5h" else dashboard_kind, expected)
+
+    def test_balance_is_not_spend_and_values_spend_is_counted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            cfg_dir = base / "cfg"
+            cache_dir = base / "cache"
+            now_dt = datetime.now(timezone.utc).replace(microsecond=0)
+            store = OmameterStore(config_dir=cfg_dir, cache_dir=cache_dir)
+            acc = Account(id="acc-or", kind="openrouter", label="OR")
+            store.accounts.append(acc)
+            snap = ProviderSnapshot(
+                account_id=acc.id,
+                card_id="openrouter",
+                kind="openrouter",
+                lines=[
+                    MetricLine(
+                        key="balance",
+                        title="Balance",
+                        line_type="values",
+                        kind="dollars",
+                        currency_code="USD",
+                        values=[MetricValue(number=100.0, kind="dollars", label="left", currency_code="USD")],
+                        resource_kind="balance",
+                    ),
+                    MetricLine(
+                        key="onDemand",
+                        title="Extra Usage",
+                        line_type="values",
+                        kind="dollars",
+                        currency_code="USD",
+                        values=[MetricValue(number=7.25, kind="dollars")],
+                        resource_kind="consumption",
+                    ),
+                    MetricLine(
+                        key="daily",
+                        title="Daily",
+                        line_type="progress",
+                        kind="dollars",
+                        used=2.0,
+                        limit=10.0,
+                        currency_code="USD",
+                        period_duration_ms=MetricPeriod.DAY_MS,
+                    ),
+                ],
+            )
+            store.snapshots[acc.id] = snap
+            store.save_accounts()
+            store.save_snapshots()
+            store.save_settings()
+            svc = AnalyticsService(
+                db_path=base / "analytics.db",
+                config_path=base / "analytics.json",
+                omameter_config_dir=cfg_dir,
+                omameter_cache_dir=cache_dir,
+                litellm_cache_path=base / "litellm.json",
+                home=base / "home",
+                env={},
+            )
+
+            # The balance line is not recorded as an amount used; the spend lines are.
+            self.assertEqual(svc.record_snapshot(acc, snap, now=now_dt), 2)
+            keys = {m["metric_key"] for m in svc.db.quota_sample_metrics(since_ts=0)}
+            self.assertEqual(keys, {"onDemand", "daily"})
+
+            rep = svc.build_report(period="today", now_ts=int(now_dt.timestamp()))
+            spend = {c["metricKey"]: c["used"] for c in rep["quotas"]["cloudSpend"]}
+            self.assertEqual(spend, {"onDemand": 7.25, "daily": 2.0})
+            self.assertAlmostEqual(rep["summary"]["cloudSpendUsd"], 9.25, places=2)
 
 
 if __name__ == "__main__":

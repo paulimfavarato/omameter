@@ -38,6 +38,7 @@ from backend.models import (
     MetricPeriod,
     PROVIDER_CATALOG,
     ProviderSnapshot,
+    metric_window_info,
     parse_iso8601,
     utc_now,
 )
@@ -109,25 +110,19 @@ def _line_unit(ln: Any) -> str:
 
 
 def _line_window_kind(ln: Any) -> str:
-    pms = getattr(ln, "period_duration_ms", None)
-    if isinstance(pms, int) and pms > 0:
-        if pms <= MetricPeriod.SESSION_MS + 3_600_000:
-            return "session"
-        if pms <= MetricPeriod.DAY_MS + 3_600_000:
-            return "daily"
-        if pms <= MetricPeriod.WEEK_MS + 86_400_000:
-            return "weekly"
-        return "monthly"
-    key_t = f"{getattr(ln, 'key', '')} {getattr(ln, 'title', '')}".lower()
-    if "session" in key_t or "5h" in key_t:
-        return "session"
-    if "day" in key_t or "daily" in key_t or "today" in key_t:
-        return "daily"
-    if "week" in key_t or "7d" in key_t:
-        return "weekly"
-    if "month" in key_t or "30d" in key_t:
-        return "monthly"
-    return ""
+    """Window kind recorded in quota history: the dashboard's own classifier
+    (`metric_window_info`), so the popup and history never file a line under
+    different windows. History keeps one name for 5-hour sessions."""
+    kind, _tag = metric_window_info(ln)
+    return "session" if kind == "5h" else kind
+
+
+def _spent_dollar_values(ln: Any) -> List[Any]:
+    """Dollar values of a `values` line that are money spent. A balance line
+    (`resource_kind == "balance"`) shows what is left, never spend."""
+    if ln.line_type != "values" or getattr(ln, "resource_kind", None) == "balance":
+        return []
+    return [v for v in (getattr(ln, "values", None) or []) if v.kind == "dollars" and math.isfinite(v.number)]
 
 
 def _account_name(acc: Any) -> str:
@@ -179,10 +174,9 @@ class AnalyticsService:
             used_pct = _used_pct_from_line(ln)
             used_amt = ln.used if (ln.used is not None and math.isfinite(ln.used)) else None
             lim_amt = ln.limit if (ln.limit is not None and math.isfinite(ln.limit)) else None
-            if ln.line_type == "values" and getattr(ln, "values", None):
-                first_dollar = next((v for v in ln.values if v.kind == "dollars" and math.isfinite(v.number)), None)
-                if first_dollar is not None:
-                    used_amt = first_dollar.number
+            if ln.line_type == "values":
+                spent = _spent_dollar_values(ln)
+                used_amt = spent[0].number if spent else None
             if used_pct is None and (used_amt is None or (ln.line_type != "progress" and ln.kind != "dollars")):
                 continue
             samples.append(
@@ -566,7 +560,25 @@ class AnalyticsService:
                             "resetWindowId": f"since_reset:{acc.id}:{ln.key}",
                         }
                     )
-                if ln.kind == "dollars" or lunit.strip().upper() in ("USD", "$"):
+                # A `values` line is classified by its values (balances excluded),
+                # even when the line itself is kind="dollars".
+                if ln.line_type == "values":
+                    for mv in _spent_dollar_values(ln):
+                        cloud_spend.append(
+                            {
+                                "accountId": acc.id,
+                                "accountName": acc_name,
+                                "provider": acc.kind,
+                                "providerName": prov_name,
+                                "metricKey": ln.key,
+                                "title": f"{ln.title} ({mv.label})" if mv.label else ln.title,
+                                "used": round(float(mv.number), 4),
+                                "limit": None,
+                                "unit": mv.currency_code or ln.currency_code or "USD",
+                                "windowKind": wkind,
+                            }
+                        )
+                elif ln.kind == "dollars" or lunit.strip().upper() in ("USD", "$"):
                     if ln.used is not None and math.isfinite(ln.used):
                         cloud_spend.append(
                             {
@@ -582,23 +594,6 @@ class AnalyticsService:
                                 "windowKind": wkind,
                             }
                         )
-                elif ln.line_type == "values" and getattr(ln, "values", None):
-                    for mv in ln.values:
-                        if mv.kind == "dollars" and math.isfinite(mv.number):
-                            cloud_spend.append(
-                                {
-                                    "accountId": acc.id,
-                                    "accountName": acc_name,
-                                    "provider": acc.kind,
-                                    "providerName": prov_name,
-                                    "metricKey": ln.key,
-                                    "title": f"{ln.title} ({mv.label})" if mv.label else ln.title,
-                                    "used": round(float(mv.number), 4),
-                                    "limit": None,
-                                    "unit": mv.currency_code or "USD",
-                                    "windowKind": wkind,
-                                }
-                            )
 
         history_metrics = self.db.quota_sample_metrics(since_ts=max(0, until_ts - 90 * 86400))
         sel_acc = history_account_id
@@ -1170,7 +1165,7 @@ class AnalyticsService:
             float(c["used"])
             for c in quotas_section["cloudSpend"]
             if c.get("unit", "").upper() in ("USD", "$")
-            and c.get("windowKind", "") in ("month", "monthly", "extra", "day", "today", "")
+            and c.get("windowKind", "") in ("monthly", "daily", "extra", "")
         )
 
         last_scan_raw = self.db.get_meta("last_scan_at", "0")

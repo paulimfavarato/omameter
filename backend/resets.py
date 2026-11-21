@@ -12,7 +12,7 @@ from backend.http_client import HTTPResponse, HTTPTransportError
 from backend.i18n import tr
 from backend.models import (
     ResetItem,
-    format_when_label,
+    format_duration_seconds,
     parse_iso8601,
     utc_now,
 )
@@ -54,6 +54,10 @@ CLAUDE_RESET_CLAIM_URL_TEMPLATE = "https://api.anthropic.com/api/organizations/{
 
 _GRANT_ID_RE = re.compile(r"^[a-z0-9_-]{1,40}$")
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+# A cooldown ending within this many seconds reads as "soon".
+COOLDOWN_SOON_SEC = 300
 
 
 def _reset_kind_title(kind: Optional[str]) -> Optional[str]:
@@ -102,11 +106,16 @@ def _format_outcome(
     if outcome == "unavailable_now":
         msg = tr("reset.unavailableNow", "Resets can't be used right now.")
         if cooldown_until is not None:
-            when = format_when_label(cooldown_until, now, mode="relative")
-            if when == "soon":
+            # Decide on the remaining time, never on translated text.
+            remaining_sec = (cooldown_until - now).total_seconds()
+            if remaining_sec <= COOLDOWN_SOON_SEC:
                 msg = tr("reset.unavailableNowTrySoon", "Resets can't be used right now. Try again soon.")
-            elif when:
-                msg = tr("reset.unavailableNowTryIn", "Resets can't be used right now. Try again in %1.", when)
+            else:
+                msg = tr(
+                    "reset.unavailableNowTryIn",
+                    "Resets can't be used right now. Try again in %1.",
+                    format_duration_seconds(remaining_sec),
+                )
         return {"ok": False, "outcome": "unavailable_now", "message": msg}
     if outcome == "not_next_reset":
         title = _reset_kind_title(next_kind)

@@ -908,31 +908,6 @@ def format_duration_seconds(seconds: float) -> str:
     return " ".join(parts) if parts else "1m"
 
 
-def format_when_label(resets_at: Optional[datetime], now: datetime, mode: str = "relative", time_format: str = "auto") -> str:
-    if resets_at is None:
-        return ""
-    delta = (resets_at - now).total_seconds()
-    if mode == "relative":
-        if delta <= 300:
-            return tr("when.soon", "soon")
-        return format_duration_seconds(delta)
-    if delta <= 0:
-        return tr("when.soon", "soon")
-    local_target = resets_at.astimezone()
-    local_now = now.astimezone()
-    day_diff = (local_target.date() - local_now.date()).days
-    use_24h = time_format == "24h"
-    if use_24h:
-        time_str = local_target.strftime("%H:%M")
-    else:
-        time_str = local_target.strftime("%-I:%M %p")
-    if day_diff <= 0:
-        return tr("when.todayAt", "today at %1", time_str)
-    if day_diff == 1:
-        return tr("when.tomorrowAt", "tomorrow at %1", time_str)
-    return tr("when.dateAt", "%1 at %2", local_target.strftime("%b %-d"), time_str)
-
-
 def short_metric_label(title: str) -> str:
     """MenuBarContentBuilder.shortLabel: strips trailing generic words (models/bot/usage)."""
     words = title.strip().split()
