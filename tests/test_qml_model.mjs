@@ -281,6 +281,8 @@ test("windowGlyph and barChipDisplay differentiate 5h, session, and weekly acros
   assert.deepEqual(JSON.parse(JSON.stringify(Model.barChipDisplay(fiveH, "compact"))), { label: "5h", glyph: "" });
   assert.deepEqual(JSON.parse(JSON.stringify(Model.barChipDisplay(session, "compact"))), { label: "5h", glyph: "" });
   assert.deepEqual(JSON.parse(JSON.stringify(Model.barChipDisplay(weekly, "compact"))), { label: "7d", glyph: "" });
+  // A "$" tag would repeat the currency the value already shows ("$ $11.30")
+  assert.deepEqual(JSON.parse(JSON.stringify(Model.barChipDisplay(extra, "compact"))), { label: "", glyph: "" });
 
   // Icon mode suppresses text labels and emits distinct glyphs for 5h, session, and weekly
   const icon5h = Model.barChipDisplay(fiveH, "icon");

@@ -577,7 +577,7 @@ class TestDaemonAccountCommands(unittest.TestCase):
                 self.assertEqual(self._toasts(events), [("Updated key for OpenRouter · OpenRouter Account.", False)])
                 self.assertEqual(daemon.vault.get_account_credential(acc.id)["apiKey"], rotated)
                 self.assertEqual(len(daemon.store.accounts), 1)
-            self.assertEqual(len(server.requests), 3)
+            self.assertEqual(len([u for u in server.requests if u.endswith("/api/v1/key")]), 3)
             self.assertNotIn(API_KEY_VALUE, out.getvalue())
 
     def test_remove_account_command_clears_lifecycle_state(self) -> None:

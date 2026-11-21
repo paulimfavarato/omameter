@@ -498,6 +498,19 @@ def _fetch_credits_lines(ctx: FetchContext, api_key: str) -> List[MetricLine]:
     return map_openrouter_credits(payload)
 
 
+def _try_credits_lines(ctx: FetchContext, api_key: str) -> List[MetricLine]:
+    """Account balance for a regular API key, best effort.
+
+    `/credits` reports the whole account's balance and also answers regular
+    inference keys, but the key read already succeeded: if the balance is
+    refused or unreadable, the card keeps its key lines instead of failing.
+    """
+    try:
+        return _fetch_credits_lines(ctx, api_key)
+    except ProviderError:
+        return []
+
+
 def _fetch_listed_keys_spend(ctx: FetchContext, api_key: str) -> Dict[str, Dict[str, float]]:
     total: Dict[str, Dict[str, float]] = {}
     for page in range(MAX_KEYS_PAGES):
@@ -592,7 +605,7 @@ def fetch(ctx: FetchContext) -> ProviderSnapshot:
         return make_snapshot(
             ctx,
             plan=parsed_key["plan"],
-            lines=history_lines + parsed_key["lines"],
+            lines=_try_credits_lines(ctx, api_key) + history_lines + parsed_key["lines"],
         )
 
     credits_lines = _fetch_credits_lines(ctx, api_key)

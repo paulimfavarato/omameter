@@ -209,7 +209,10 @@ def format_line_amount(line: MetricLine, display_mode: str = "remaining", style:
         parts: List[str] = []
         for mv in line.values:
             rendered = format_metric_value(mv.number, mv.kind, currency_code=mv.currency_code, style=style)
-            if mv.label == "left":
+            if style == "tray":
+                # The top bar shows the bare amount, like the percent windows.
+                parts.append(rendered)
+            elif mv.label == "left":
                 parts.append(tr("amount.left", "%1 left", rendered))
             elif mv.label == "available":
                 parts.append(tr("amount.available", "%1 available", rendered))

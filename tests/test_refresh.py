@@ -45,13 +45,24 @@ def _key_payload(*, key_used: float = 10.0, free_used: float = 5.0) -> Dict[str,
 
 
 class OpenRouterServer:
-    """Scripted responses for `GET /api/v1/key`; each entry is a payload or an exception."""
+    """Scripted responses for `GET /api/v1/key`; each entry is a payload or an exception.
 
-    def __init__(self, script: List[Any]) -> None:
+    `GET /api/v1/credits` answers `credits` (a payload, or an HTTP status to refuse
+    with) and is logged apart in `credit_requests`, so `requests` counts key reads.
+    """
+
+    def __init__(self, script: List[Any], credits: Any = 403) -> None:
         self.script = list(script)
+        self.credits = credits
         self.requests: List[str] = []
+        self.credit_requests: List[str] = []
 
     def __call__(self, method, url, kwargs):
+        if url.endswith("/api/v1/credits"):
+            self.credit_requests.append(url)
+            if isinstance(self.credits, int):
+                return HTTPResponse(status=self.credits, headers={}, body=b"{}")
+            return HTTPResponse(status=200, headers={}, body=json.dumps(self.credits).encode("utf-8"))
         self.requests.append(url)
         item = self.script.pop(0) if len(self.script) > 1 else self.script[0]
         if isinstance(item, BaseException):
@@ -202,6 +213,32 @@ class TestRefreshFetchAndRecord(unittest.TestCase):
             snap = reloaded.snapshots[acc.id]
             self.assertEqual(snap.refreshed_at, format_iso8601(NOW))
             self.assertIn("keyLimit", {ln.key for ln in snap.lines})
+            # A refused balance read leaves the key lines in place
+            self.assertNotIn("balance", {ln.key for ln in snap.lines})
+
+    def test_regular_key_reads_account_balance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            server = OpenRouterServer([_key_payload()], credits={"data": {"total_credits": 50.0, "total_usage": 12.5}})
+            h = Harness(tmp, server=server)
+            acc = h.add_openrouter()
+            outcome = h.refresh(acc)
+            self.assertEqual(outcome.status, "ok")
+            self.assertEqual(server.credit_requests, ["https://openrouter.ai/api/v1/credits"])
+            lines = {ln.key: ln for ln in outcome.snapshot.lines}
+            self.assertEqual(lines["balance"].values[0].number, 37.5)
+            self.assertIn("keyLimit", lines)
+
+    def test_regular_key_ignores_unreadable_balance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for credits in (401, 500, {"data": {"unexpected": True}}):
+                server = OpenRouterServer([_key_payload()], credits=credits)
+                h = Harness(tmp, server=server)
+                acc = h.add_openrouter()
+                outcome = h.refresh(acc)
+                self.assertEqual(outcome.status, "ok", credits)
+                keys = {ln.key for ln in outcome.snapshot.lines}
+                self.assertNotIn("balance", keys)
+                self.assertIn("keyLimit", keys)
 
     def test_account_removed_during_fetch_records_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -637,7 +637,7 @@
                 "subtitle": "Billing cycle ends Jul 31",
                 "title": "On-Demand Usage",
                 "titleNamesWindow": false,
-                "trayValue": "$12 spent",
+                "trayValue": "$12.50",
                 "windowKind": "extra",
                 "windowTag": "$"
               }
@@ -729,7 +729,7 @@
                 "subtitle": "",
                 "title": "Credits",
                 "titleNamesWindow": true,
-                "trayValue": "$0 left",
+                "trayValue": "$0.00",
                 "windowKind": "extra",
                 "windowTag": "$"
               }
@@ -1019,7 +1019,7 @@
           "severity": "critical",
           "shortTitle": "Credits",
           "title": "Credits",
-          "value": "$0 left",
+          "value": "$0.00",
           "windowKind": "extra",
           "windowTag": "$"
         }
@@ -1473,7 +1473,7 @@
           "subtitle": "",
           "title": "Credits",
           "titleNamesWindow": true,
-          "trayValue": "$0 left",
+          "trayValue": "$0.00",
           "windowKind": "extra",
           "windowTag": "$"
         }
@@ -2119,7 +2119,7 @@
                 "subtitle": "Billing cycle ends Jul 31",
                 "title": "On-Demand Usage",
                 "titleNamesWindow": false,
-                "trayValue": "$12 spent",
+                "trayValue": "$12.50",
                 "windowKind": "extra",
                 "windowTag": "$"
               }
@@ -2211,7 +2211,7 @@
                 "subtitle": "",
                 "title": "Credits",
                 "titleNamesWindow": true,
-                "trayValue": "$0 left",
+                "trayValue": "$0.00",
                 "windowKind": "extra",
                 "windowTag": "$"
               }
@@ -2753,7 +2753,7 @@
           "subtitle": "",
           "title": "Credits",
           "titleNamesWindow": true,
-          "trayValue": "$0 left",
+          "trayValue": "$0.00",
           "windowKind": "extra",
           "windowTag": "$"
         }
