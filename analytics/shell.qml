@@ -148,12 +148,20 @@ ShellRoot {
   // Match Omarchy Commons/Style.qml ("monospace" follows `omarchy font set`)
   readonly property string fontFamily: "monospace"
 
+  // Gemini brand blue, same tint as the Antigravity icon on the top bar (Model.js PROVIDER_COLORS).
+  readonly property string geminiBlue: _isLight(bg) ? "#1a56c4" : "#8ab4f8"
   readonly property var providerColors: ({
     claude: _col(rawTheme.orange || rawTheme.red || rawTheme.color9 || rawTheme.color1, "#e1875c"),
     codex: _col(rawTheme.green || rawTheme.color2, "#a9b665"),
-    antigravity: _col(rawTheme.blue || rawTheme.cyan || rawTheme.accent || rawTheme.color4, "#7daea3"),
+    antigravity: geminiBlue,
     opencode: _col(rawTheme.magenta || rawTheme.color5, "#d3869b")
   })
+
+  // Gemini models keep the Gemini blue whichever harness ran them (e.g. google/gemini-* via OpenCode).
+  function modelColor(model, provider) {
+    if (String(model || "").toLowerCase().indexOf("gemini") >= 0) return geminiBlue
+    return providerColors[provider] || accent
+  }
   readonly property var providerOrder: ["claude", "codex", "antigravity", "opencode"]
   readonly property var providerNames: ({
     claude: "Claude Code",
@@ -1616,7 +1624,7 @@ ShellRoot {
                                 anchors.verticalCenter: parent.verticalCenter
                                 color: {
                                   var ps = modelData.providers || []
-                                  return ps.length > 0 ? (appRoot.providerColors[ps[0]] || appRoot.accent) : appRoot.accent
+                                  return appRoot.modelColor(modelData.model, ps.length > 0 ? ps[0] : "")
                                 }
                               }
 
@@ -1657,9 +1665,7 @@ ShellRoot {
                               height: parent.height
                               radius: appRoot.radiusCap(2)
                               color: modelData.priced
-                                ? ((modelData.providers && modelData.providers.length > 0)
-                                  ? (appRoot.providerColors[modelData.providers[0]] || appRoot.accent)
-                                  : appRoot.accent)
+                                ? appRoot.modelColor(modelData.model, (modelData.providers && modelData.providers.length > 0) ? modelData.providers[0] : "")
                                 : appRoot.warningColor
                             }
                           }
@@ -1867,7 +1873,7 @@ ShellRoot {
                               height: 7
                               radius: 3.5
                               anchors.verticalCenter: parent.verticalCenter
-                              color: appRoot.providerColors[modelData.provider] || appRoot.accent
+                              color: appRoot.modelColor(modelData.primaryModel, modelData.provider)
                             }
 
                             PlainText {
