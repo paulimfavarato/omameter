@@ -6,9 +6,15 @@ Omameter is a native [Omarchy](https://omarchy.org) shell plugin (`service` + `b
 
 ## Screenshots
 
-| Priority | All Usage | Settings |
+![Analytics window with API-equivalent cost trend, models and projects](docs/screenshots/analytics.png)
+
+| Priority | Top bar tooltip | All Usage |
 |---|---|---|
-| ![Priority tab with pinned limits](docs/screenshots/priority.png) | ![All Usage tab with the top bar strip](docs/screenshots/all-usage.png) | ![Settings, General tab](docs/screenshots/settings.png) |
+| ![Priority tab with pinned limits and the top bar strip](docs/screenshots/priority.png) | ![Top bar tooltip with every limit at a glance](docs/screenshots/tooltip.png) | ![All Usage tab with per-account limits and resets](docs/screenshots/all-usage.png) |
+
+| Accounts | Settings |
+|---|---|
+| ![Accounts list with sign-in methods and plans](docs/screenshots/accounts.png) | ![Settings, General tab](docs/screenshots/settings.png) |
 
 ---
 
