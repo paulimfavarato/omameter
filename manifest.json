@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "paulimfavarato.omameter",
   "name": "Omameter",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "author": "Paulo Busato Favarato",
   "license": "MIT",
   "description": "Track the usage limits of your AI coding subscriptions (Claude, ChatGPT/Codex, Cursor, Amp, Antigravity, GitHub Copilot, Devin, Grok, Muse Code, Ollama, OpenCode, OpenRouter, Z.ai and CLIProxyAPI hubs) in the Omarchy top bar, with Priority ranking, pace marks, Burning Fast alerts, Unified Accounts, Rate-Limit Resets and the omameter CLI.",

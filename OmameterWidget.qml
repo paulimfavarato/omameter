@@ -838,7 +838,7 @@ Panel {
         anchors.right: parent.right
         height: Math.max(Style.space(22), Math.max(footerLeft.implicitHeight, footerRight.implicitHeight))
 
-        // Left: Omameter 0.8.0 · Next update in ... (clickable to force refresh).
+        // Left: Omameter 0.9.0 · Next update in ... (clickable to force refresh).
         // Constrained before footerRight so Undo/Copy Summary never overlap it.
         Item {
           id: footerLeftBox
@@ -862,7 +862,7 @@ Panel {
               id: versionText
               visible: footerLeftBox.showVersionPrefix
               anchors.verticalCenter: parent.verticalCenter
-              text: root.t("app.title", "Omameter") + " 0.8.0"
+              text: root.t("app.title", "Omameter") + " 0.9.0"
               color: Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.5)
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
