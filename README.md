@@ -86,7 +86,7 @@ cd omameter
 
 1. validates the plugin with `omarchy plugin validate`;
 2. copies the plugin (without symlinks, tests or CI files) to `~/.config/omarchy/plugins/paulimfavarato.omameter`;
-3. installs the `omameter` and `omameter-analytics` CLI wrappers to `~/.local/bin/`;
+3. installs the `omameter` and `omameter-analytics` CLI wrappers to `~/.local/bin/` (an existing command there that Omameter did not write is left alone);
 4. enables the widget on the right side of the top bar.
 
 To **update**, pull and run `./install.sh` again: it replaces the installed copy and runs `omarchy-restart-shell` so the new QML and daemon load. Your accounts and settings are kept.

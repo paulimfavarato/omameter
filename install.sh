@@ -41,13 +41,35 @@ tar -C "$SCRIPT_DIR" \
 
 chmod +x "$TARGET_DIR/bin/omameter" "$TARGET_DIR/bin/omameter-analytics" "$TARGET_DIR/backend/daemon.py" "$TARGET_DIR/backend/analytics/cli.py" "$TARGET_DIR/install.sh" "$TARGET_DIR/uninstall.sh"
 
+# Write a CLI wrapper only where it is ours to write: a missing path, a wrapper
+# an earlier install.sh wrote, or a symlink into this plugin's bin/ (the
+# `omarchy plugin add` setup in the README). Anything else is the user's own
+# command and is left alone. The wrapper is written to a temp file and moved
+# into place, so an existing symlink is replaced, never written through.
+install_cli_wrapper() {
+  local name="$1" runner="$2"
+  local target="${CLI_BIN_DIR}/${name}"
+  local marker="plugins/${PLUGIN_ID}/bin/${name}"
+  if [[ -L "$target" ]]; then
+    if [[ "$(readlink "$target")" != *"$marker" ]]; then
+      echo "    Skipping ${target}: it is a symlink to something else. Remove it to install the ${name} command."
+      return 0
+    fi
+  elif [[ -e "$target" ]] && ! grep -qF "$marker" "$target" 2>/dev/null; then
+    echo "    Skipping ${target}: it already exists and was not written by Omameter."
+    return 0
+  fi
+  local tmp
+  tmp="$(mktemp "${CLI_BIN_DIR}/.${name}.XXXXXX")"
+  printf '#!/usr/bin/env bash\nexec %s %q "$@"\n' "$runner" "${TARGET_DIR}/bin/${name}" > "$tmp"
+  chmod 755 "$tmp"
+  mv -f "$tmp" "$target"
+}
+
 echo "==> Installing CLI helpers to ${CLI_BIN_DIR}..."
 mkdir -p "$CLI_BIN_DIR"
-printf '#!/usr/bin/env bash\nexec python3 %q "$@"\n' "${TARGET_DIR}/bin/omameter" > "$CLI_TARGET"
-chmod +x "$CLI_TARGET"
-ANALYTICS_TARGET="${CLI_BIN_DIR}/omameter-analytics"
-printf '#!/usr/bin/env bash\nexec bash %q "$@"\n' "${TARGET_DIR}/bin/omameter-analytics" > "$ANALYTICS_TARGET"
-chmod +x "$ANALYTICS_TARGET"
+install_cli_wrapper omameter python3
+install_cli_wrapper omameter-analytics bash
 
 if command -v omarchy >/dev/null 2>&1; then
   echo "==> Validating installed copy..."

@@ -37,16 +37,20 @@ if [[ -d "$TARGET_DIR" ]]; then
   rm -rf "$TARGET_DIR"
 fi
 
-# Only remove the CLI wrappers install.sh wrote.
-if [[ -f "$CLI_TARGET" ]] && grep -q "plugins/${PLUGIN_ID}/bin/omameter" "$CLI_TARGET" 2>/dev/null; then
-  echo "==> Removing ${CLI_TARGET}..."
-  rm -f "$CLI_TARGET"
-fi
-ANALYTICS_TARGET="${HOME}/.local/bin/omameter-analytics"
-if [[ -f "$ANALYTICS_TARGET" ]] && grep -q "plugins/${PLUGIN_ID}/bin/omameter-analytics" "$ANALYTICS_TARGET" 2>/dev/null; then
-  echo "==> Removing ${ANALYTICS_TARGET}..."
-  rm -f "$ANALYTICS_TARGET"
-fi
+# Only remove the CLI wrappers install.sh wrote, or symlinks into the plugin's
+# bin/ (the `omarchy plugin add` setup). Anything else is the user's own command.
+remove_cli_wrapper() {
+  local target="$1" marker="plugins/${PLUGIN_ID}/bin/$2"
+  if [[ -L "$target" ]]; then
+    [[ "$(readlink "$target")" == *"$marker" ]] || return 0
+  elif [[ ! -f "$target" ]] || ! grep -qF "$marker" "$target" 2>/dev/null; then
+    return 0
+  fi
+  echo "==> Removing ${target}..."
+  rm -f "$target"
+}
+remove_cli_wrapper "$CLI_TARGET" omameter
+remove_cli_wrapper "${HOME}/.local/bin/omameter-analytics" omameter-analytics
 
 if [[ "$PURGE" == "1" ]]; then
   echo "==> Purging Omameter data..."
